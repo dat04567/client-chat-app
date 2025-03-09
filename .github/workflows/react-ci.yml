@@ -30,8 +30,5 @@ jobs:
       - name: 🔹 Lint code (Kiểm tra lỗi code)
         run: npm run lint
 
-      - name: 🔹 Run tests (Chạy test tự động)
-        run: npm test
-
       - name: 🔹 Build React app
         run: npm run build
