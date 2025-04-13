@@ -1,2 +1,9 @@
 export { default as GoogleIcon } from './GoogleIcon';
 export { default as FacebookIcon } from './FacebookIcon';
+export { default as ChatIcon } from './ChatIcon';
+export { default as ContactsIcon } from './ContactsIcon';
+export { default as ChatbotIcon } from './ChatbotIcon';
+export { default as StoriesIcon } from './StoriesIcon';
+export { default as MenuIcon } from './MenuIcon';
+export { default as NotificationsIcon } from './NotificationsIcon';
+export { default as UserIcon } from './UserIcon';

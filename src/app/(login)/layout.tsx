@@ -16,8 +16,7 @@ export default function RootLayout({ children }) {
                            <Image src="/miumiu2.png" width={200} height={200} alt="icon" />
                         </a>
                      </div>
-                     <LoginForm />
-
+                     {children}
                      <div className="text-center mt-4">
                         <p className="small"> 
                            Bạn chưa có tài khoản? 
