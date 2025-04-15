@@ -1,86 +1,118 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
+import Image from 'next/image';
+import { formatMessageTime } from '@/utils/timeFormatters';
 
-const MessageList = ({ messages }) => {
-  // Group messages by date
-  const groupMessagesByDate = () => {
-    const groups = [];
-    let currentGroup = null;
+export interface Message {
+  id: string;
+  content: string;
+  senderId: string;
+  timestamp: string | Date;
+  conversationId: string;
+}
+
+interface MessageListProps {
+  messages: Message[];
+  currentUserId: string;
+}
+
+export const MessageList: React.FC<MessageListProps> = ({ 
+  messages, 
+  currentUserId 
+}) => {
+  // Group messages by date for timestamp separators
+  const groupedMessages = useMemo(() => {
+    const result = [];
+    let lastMessageDate: string | null = null;
+    let lastMessageTimestamp: Date | null = null;
     
-    messages.forEach((message) => {
-      // In a real app, you would compare actual dates
-      // For now, we'll just use the time string for demonstration
-      if (!currentGroup || currentGroup.date !== message.time.split(' ')[0]) {
-        currentGroup = {
-          date: message.time.split(' ')[0],
-          messages: [message]
-        };
-        groups.push(currentGroup);
-      } else {
-        currentGroup.messages.push(message);
-      }
+    // Sort messages by timestamp (newest first)
+    const sortedMessages = [...messages].sort((a, b) => {
+      const dateA = new Date(a.timestamp);
+      const dateB = new Date(b.timestamp);
+      return dateB.getTime() - dateA.getTime();
     });
     
-    return groups;
-  };
-  
-  const messageGroups = groupMessagesByDate();
-  
+    sortedMessages.forEach(message => {
+      const messageDate = new Date(message.timestamp);
+      const messageDateString = messageDate.toDateString();
+      
+      // Check if we should display a new timestamp separator
+      let showTimestamp = false;
+      
+      if (!lastMessageDate || messageDateString !== lastMessageDate) {
+        // Different day - always show timestamp
+        showTimestamp = true;
+      } else if (lastMessageTimestamp) {
+        // Same day - check if gap is more than 2 hours
+        const hoursDifference = (lastMessageTimestamp.getTime() - messageDate.getTime()) / (1000 * 60 * 60);
+        if (hoursDifference >= 2) {
+          showTimestamp = true;
+        }
+      }
+      
+      if (showTimestamp) {
+        result.push({
+          type: 'timestamp',
+          timestamp: messageDate,
+          id: `timestamp-${message.id}`
+        });
+      }
+      
+      result.push({
+        type: 'message',
+        message
+      });
+      
+      lastMessageDate = messageDateString;
+      lastMessageTimestamp = messageDate;
+    });
+    
+    return result;
+  }, [messages]);
+
+  if (!messages || messages.length === 0) {
+    return (
+      <div className="tyn-chat-empty">
+        <div className="tyn-text-center">
+          <Image src="/images/chat-empty.svg" alt="No messages" width={200} height={200} />
+          <p>Không có tin nhắn nào. Hãy bắt đầu cuộc trò chuyện!</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="tyn-reply" id="tynReply">
-      {messageGroups.map((group, groupIndex) => (
-        <React.Fragment key={groupIndex}>
-          {groupIndex > 0 && (
-            <div className="tyn-reply-separator">{group.date}</div>
-          )}
-          
-          {group.messages.map((message, index) => {
-            const isOutgoing = message.sender === 'me';
-            const previousMessage = index > 0 ? group.messages[index - 1] : null;
-            const nextMessage = index < group.messages.length - 1 ? group.messages[index + 1] : null;
-            
-            // Determine if this is the start of a new group of messages from the same sender
-            const isNewSenderGroup = !previousMessage || previousMessage.sender !== message.sender;
-            
-            return (
-              <div 
-                key={message.id} 
-                className={`tyn-reply-item ${isOutgoing ? 'outgoing' : 'incoming'}`}
-              >
-                {!isOutgoing && isNewSenderGroup && (
-                  <div className="tyn-reply-avatar">
-                    <div className="tyn-media tyn-size-md tyn-circle">
-                      <img src="/images/avatar/1.jpg" alt="User" />
-                    </div>
-                  </div>
-                )}
-                
-                <div className="tyn-reply-group">
-                  <div className="tyn-reply-bubble">
-                    <div className="tyn-reply-text">
-                      {message.content}
-                    </div>
-                    <div className="tyn-reply-meta">
-                      <span className="time">{message.time}</span>
-                      {isOutgoing && (
-                        <span className="status delivered">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-check2-all" viewBox="0 0 16 16">
-                            <path d="M12.354 4.354a.5.5 0 0 0-.708-.708L5 10.293 1.854 7.146a.5.5 0 1 0-.708.708l3.5 3.5a.5.5 0 0 0 .708 0l7-7zm-4.208 7-.896-.897.707-.707.543.543 6.646-6.647a.5.5 0 0 1 .708.708l-7 7a.5.5 0 0 1-.708 0z"/>
-                            <path d="m5.354 7.146.896.897-.707.707-.897-.896a.5.5 0 1 1 .708-.708z"/>
-                          </svg>
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+    <div className="tyn-reply-box">
+      {groupedMessages.map(item => {
+        if (item.type === 'timestamp') {
+          return (
+            <div key={item.id} className="tyn-reply-separator">
+              {formatMessageTime(item.timestamp, 'full')}
+            </div>
+          );
+        }
+        
+        const { message } = item;
+        const isCurrentUser = message.senderId === currentUserId;
+        
+        return (
+          <div 
+            key={message.id} 
+            className={`tyn-reply-item ${isCurrentUser ? 'tyn-reply-me' : ''}`}
+          >
+            <div className="tyn-reply-bubble">
+              <div className="tyn-reply-text">
+                {message.content}
               </div>
-            );
-          })}
-        </React.Fragment>
-      ))}
+              <div className="tyn-reply-time">
+                {formatMessageTime(message.timestamp, 'time')}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
-
-export default MessageList;

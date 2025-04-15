@@ -1,11 +1,15 @@
 "use client";
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ChatLayout from '../../ChatLayout';
+import Navbar from '@/components/layout/Navbar';
+import ChatSidebar from '@/components/messages/sidebar/ChatSidebar';
+import ChatMain from '@/components/messages/chat/ChatMain';
+import NewChatModal from '@/components/messages/modals/NewChatModal';
 
 export default function NewMessagePage() {
   const router = useRouter();
-  const [newChat] = useState({ 
+  const [showChatOptions, setShowChatOptions] = useState(false);
+  const [newChat, setNewChat] = useState({ 
     id: 'new-temp-id',
     userName: 'New Message',
     userAvatar: '/images/avatar/default.jpg',
@@ -22,10 +26,21 @@ export default function NewMessagePage() {
   };
 
   return (
-    <ChatLayout 
-      initialChat={newChat}
-      isNewChat={true}
-      onDeleteChat={handleDeleteNewChat}
-    />
+    <div className="tyn-root">
+      <Navbar />
+      
+      <div className="tyn-content tyn-content-full-height tyn-chat has-aside-base">
+        <ChatSidebar newMessageChat={newChat} onDeleteNewChat={handleDeleteNewChat} />
+        {/* <ChatMain 
+          chat={newChat} 
+          showOptions={showChatOptions}
+          onToggleOptions={() => setShowChatOptions(!showChatOptions)} 
+          isNewChat={true}
+        /> */}
+      </div>
+      
+      {/* Modals */}
+      <NewChatModal />
+    </div>
   );
 }

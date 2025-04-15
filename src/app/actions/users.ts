@@ -24,11 +24,11 @@ export async function fetchContactsAction(searchQuery: string = '') {
       }
 
 
-      return  response.data;
+      return response.data;
    } catch (error) {
       console.error('Error fetching contacts:', error);
-      return { 
-         sucess : false,
+      return {
+         sucess: false,
          error: 'Không thể tải danh sách liên hệ'
       };
    }
@@ -50,18 +50,19 @@ export async function searchUsersAction(searchQuery: string) {
          }
       );
 
-      
-      console.log('response', response);
-      
 
       if (response.status !== 200) {
          throw new Error('Đã xảy ra lỗi khi tìm kiếm người dùng');
       }
 
-      
+
       return await response.data;
    } catch (error) {
-      console.error('Error searching users:', error);
+      if (axios.isAxiosError(error) && error.response) {
+         console.error('Error searching users:', error.response.data);
+         return { success: false, error: error.response.data.message || error.response.data.error || "Đăng nhập thất bại" };
+      }
+
       return { success: false, error: 'Đã xảy ra lỗi khi tìm kiếm người dùng' };
    }
 }

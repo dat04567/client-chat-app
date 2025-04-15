@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useGetChatsQuery } from '@/redux/services/apiSlice';
+import { useGetConversationsQuery } from '@/redux/services/apiSlice';
 import { formatTime } from '@/utils/formatTime';
 import { UserIcon } from '@/components/icons';
 import Link from 'next/link';
@@ -18,16 +18,20 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ newMessageChat, onDeleteNewCh
    const [searchQuery, setSearchQuery] = useState('');
    const [activeId, setActiveId] = useState<number | string | null>(newMessageChat?.id || null);
 
-   // Sử dụng RTK Query hook để fetch và quản lý trạng thái chats
-   const { data: chats = [], isLoading: loading, error } = useGetChatsQuery(undefined);
+   // Sử dụng RTK Query hook để fetch và quản lý trạng thái conversations
+   const {
+      data: conversations = [],
+      isLoading: loading,
+      error,
+   } = useGetConversationsQuery(undefined);
 
-   // Xử lý khi chọn chat
-   const handleChatSelect = (chatId: number | string) => {
-      setActiveId(chatId);
+   // Xử lý khi chọn conversation
+   const handleConversationSelect = (conversationId: number | string) => {
+      setActiveId(conversationId);
 
-      // If it's not the new message chat, navigate to that chat
-      if (chatId !== 'new-temp-id') {
-         // Navigate to specific chat (implementation depends on your app structure)
+      // If it's not the new message chat, navigate to that conversation
+      if (conversationId !== 'new-temp-id') {
+         router.push(`/messages/${conversationId}`);
       }
    };
 
@@ -38,12 +42,24 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ newMessageChat, onDeleteNewCh
       }
    };
 
-   // Lọc chats theo tìm kiếm
-   const filteredChats = chats.filter(
-      (chat) =>
-         chat.userName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-         chat.lastMessage?.toLowerCase().includes(searchQuery.toLowerCase())
-   );
+   // Lọc conversations theo tìm kiếm
+   const filteredConversations = conversations.filter((conversation) => {
+      // Tìm trong tên (với one-to-one là tên người dùng, với group là tên nhóm)
+      const name =
+         conversation.type === 'GROUP'
+            ? conversation.groupName || ''
+            : conversation.participantPairKey || '';
+
+      // Tìm trong nội dung tin nhắn cuối
+      const lastMessage = conversation.lastMessageText || '';
+
+      console.log(conversations);
+
+      return (
+         name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+         lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+   });
 
    return (
       <div className="tyn-aside tyn-aside-base">
@@ -113,7 +129,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ newMessageChat, onDeleteNewCh
                            fill="currentColor"
                            className="bi bi-search"
                            viewBox="0 0 16 16">
-                           <path d="M11.742 10.344a6.5 6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
+                           <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a.5.5 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z" />
                         </svg>
                      </div>
                      <input
@@ -136,23 +152,22 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ newMessageChat, onDeleteNewCh
                         <li className="tyn-aside-item js-toggle-main active">
                            <div className="tyn-media-group">
                               <div className="tyn-media tyn-size-lg">
-                                <UserIcon width='48' height='48' className='active' />
-                                 {/* <Image src="images/avatar/1.jpg" alt="" /> */}
+                                 <UserIcon width="48" height="48" className="active" />
                               </div>
                               <div className="tyn-media-col">
                                  <div className="tyn-media-row">
-
-                                    <h6 className="name">Tin nhắn mới</h6>
-                          
+                                    <h6 className="name">
+                                       {newMessageChat.userName === 'Tin nhắn mới'
+                                          ? 'Tin nhắn mới'
+                                          : newMessageChat.userName}
+                                    </h6>
                                  </div>
-                                
                               </div>
                               <div className="tyn-media-option tyn-aside-item-option">
                                  <div className="tyn-media-option-list">
                                     <div
                                        className="btn btn-icon btn-white btn-pill dropdown-toggle"
-                                        onClick={handleDeleteNewChat}
-                                       >
+                                       onClick={handleDeleteNewChat}>
                                        <svg
                                           xmlns="http://www.w3.org/2000/svg"
                                           width="16"
@@ -185,7 +200,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ newMessageChat, onDeleteNewCh
                <>
                   <div className="tyn-aside-item-empty py-4">
                      <p className="text-center text-danger">
-                        Error loading chats. Please try again.
+                        Error loading conversations. Please try again.
                      </p>
                   </div>
                </>
@@ -193,62 +208,69 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ newMessageChat, onDeleteNewCh
                <div className="tab-content">
                   <div className="tab-pane show active" id="all-chats" tabIndex={0} role="tabpanel">
                      <ul className="tyn-aside-list">
-                        {/* Regular chat items */}
-                        {filteredChats.length > 0
-                           ? filteredChats.map((chat) => (
-                                <li
-                                   key={chat.id}
-                                   className={`tyn-aside-item js-toggle-main${
-                                      chat.unreadCount > 0 ? ' unread' : ''
-                                   }${activeId === chat.id ? ' active' : ''}`}
-                                   onClick={() => handleChatSelect(chat.id)}>
-                                   <div className="tyn-media-group">
-                                      <div className="tyn-media tyn-size-lg">
-                                         <div
-                                            style={{
-                                               position: 'relative',
-                                               width: '48px',
-                                               height: '48px',
-                                            }}>
-                                            <Image
-                                               src={chat.userAvatar || '/images/avatar/default.jpg'}
-                                               alt={chat.userName}
-                                               fill
-                                               style={{ objectFit: 'cover', borderRadius: '50%' }}
-                                            />
+                        {filteredConversations.length > 0
+                           && filteredConversations.map((conversation) => {
+                                const isGroup = conversation.type === 'GROUP';
+                                const displayName = isGroup
+                                   ? conversation.groupName || 'Group Chat'
+                                   : conversation.participantPairKey || 'Chat';
+                                // Placeholder for unread count (you may need to adjust this based on your data structure)
+                                const unreadCount = 0; // This would be calculated from your data
+
+                                return (
+                                   <li
+                                      key={conversation.conversationId}
+                                      className={`tyn-aside-item js-toggle-main${
+                                         unreadCount > 0 ? ' unread' : ''
+                                      }${
+                                         activeId === conversation.conversationId ? ' active' : ''
+                                      }`}
+                                      onClick={() =>
+                                         handleConversationSelect(conversation.conversationId)
+                                      }>
+                                      <div className="tyn-media-group">
+                                         <div className="tyn-media tyn-size-lg">
+                                            <div
+                                               style={{
+                                                  position: 'relative',
+                                                  width: '48px',
+                                                  height: '48px',
+                                               }}>
+                                               <Image
+                                                  src={
+                                                     isGroup
+                                                        ? '/images/avatar/default.png'
+                                                        : '/images/avatar/default.png'
+                                                  }
+                                                  alt={displayName}
+                                                  fill
+                                                  style={{
+                                                     objectFit: 'cover',
+                                                     borderRadius: '50%',
+                                                  }}
+                                               />
+                                            </div>
+                                            {/* Could implement online status here */}
                                          </div>
-                                         {chat.isOnline && (
-                                            <div className="tyn-status bg-success"></div>
-                                         )}
+
+                                         <div className="tyn-media-col">
+                                            <div className="tyn-media-row">
+                                               <h6 className="name">{conversation.partner.profile.lastName + ' ' + conversation.partner.profile.firstName}</h6>
+                                               {/* <span className="typing">typing ...</span> */}
+                                            </div>
+                                            <div className="tyn-media-row has-dot-sap">
+                                               <p className="content">
+                                                  {conversation.lastMessageText}
+                                               </p>
+                                                <span className="meta">{formatTime(conversation.lastMessageAt)}</span>
+                                            </div>
+
+                                         </div>
                                       </div>
-                                      <div className="tyn-media-col">
-                                         <div className="tyn-media-row">
-                                            <h6 className="name">{chat.userName}</h6>
-                                            <span className="time">
-                                               {chat.lastMessageTime
-                                                  ? formatTime(chat.lastMessageTime)
-                                                  : ''}
-                                            </span>
-                                         </div>
-                                         <div className="tyn-media-row">
-                                            <p className="content">
-                                               {chat.lastMessage || 'Start a conversation'}
-                                            </p>
-                                            {chat.unreadCount > 0 && (
-                                               <span className="unread">{chat.unreadCount}</span>
-                                            )}
-                                         </div>
-                                      </div>
-                                   </div>
-                                </li>
-                             ))
-                           : !newMessageChat && (
-                                <div className="tyn-aside-item-empty py-4">
-                                   <p className="text-center text-muted">
-                                      {searchQuery ? 'No chats match your search' : 'No chats yet'}
-                                   </p>
-                                </div>
-                             )}
+                                   </li>
+                                );
+                             })
+                           }
                      </ul>
                   </div>
                </div>

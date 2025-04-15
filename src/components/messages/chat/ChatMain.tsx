@@ -46,14 +46,14 @@ const ChatMain = ({ chat, showOptions, onToggleOptions, isNewChat = false }) => 
 
   return (
     <div className="tyn-main tyn-chat-content" id="tynMain">
-      <ChatHeader 
+      {/* <ChatHeader 
         chat={chat} 
         onToggleSearch={() => setSearchVisible(!searchVisible)}
         onToggleOptions={onToggleOptions}
         searchVisible={searchVisible}
         isNewChat={isNewChat}
       />
-      
+       */}
       <div className="tyn-chat-body js-scroll-to-end" id="tynChatBody" ref={chatBodyRef}>
         {isNewChat && messages.length === 0 ? (
           <div className="tyn-chat-welcome text-center py-5">

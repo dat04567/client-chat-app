@@ -942,7 +942,7 @@ dl {
   --radius-large: 0.5rem;
   --radius-small: 0.25rem;
   --avatar-gap: 0.75rem;
-  padding: 1rem 0;
+  /* padding: 1rem 0; */
   display: flex;
   flex-direction: column-reverse;
 }
@@ -1208,6 +1208,9 @@ dl {
   max-height: 100%;
   overflow: auto;
   flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 .tyn-chat-form {
   display: flex;
@@ -1764,5 +1767,64 @@ dl {
   --tyn-icon-size: var(--bs-icon-size-4xl);
 }
 
+.tyn-selected-users {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-left: 10px;
+}
+
+.tyn-selected-user {
+  display: flex;
+  align-items: center;
+  background-color: #f0f2f5;
+  padding: 2px 8px;
+  border-radius: 16px;
+  margin-right: 5px;
+  font-size: 14px;
+}
+
+.tyn-search-results {
+  position: absolute;
+  top: 100%;
+  left: 1rem;
+  width: 300px;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  margin-top: 5px;
+}
+
+.tyn-search-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tyn-search-item {
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.tyn-search-item:hover {
+  background-color: #f0f2f5;
+}
+
+.tyn-user-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tyn-chat-footer {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 /*! END */
 

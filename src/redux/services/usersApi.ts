@@ -16,7 +16,7 @@ export const usersApi = baseApi.injectEndpoints({
             return { 
               error: {
                 status: 'CUSTOM_ERROR',
-                data: result.error,
+                error: result.error,
               } as FetchBaseQueryError
             };
           }
@@ -55,10 +55,12 @@ export const usersApi = baseApi.injectEndpoints({
           // Trả về dữ liệu thành công
           return { data: result.data as User[] };
         } catch (error) {
+          console.log('Error searching users:', error);
+          
           return { 
             error: {
               status: 'CUSTOM_ERROR',
-              data: 'Đã xảy ra lỗi khi tìm kiếm người dùng',
+              data: error.data.error || error.data.message || 'Đã xảy ra lỗi khi tìm kiếm người dùng',
             } as FetchBaseQueryError
           };
         }

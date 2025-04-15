@@ -1,5 +1,5 @@
 import { baseApi } from './baseApi';
-import { Chat, Message } from './types';
+import { Chat, Message, ConversationResponse } from './types';
 
 // API endpoints liên quan đến chats và messages
 export const chatsApi = baseApi.injectEndpoints({
@@ -172,7 +172,9 @@ export const chatsApi = baseApi.injectEndpoints({
         }
       },
       invalidatesTags: ['Chats']
-    })
+    }),
+    
+  
   }),
 });
 
@@ -183,5 +185,5 @@ export const {
   useSendMessageMutation,
   useCreateChatMutation,
   useMarkChatAsReadMutation,
-  useDeleteChatMutation
+  useDeleteChatMutation,
 } = chatsApi;
