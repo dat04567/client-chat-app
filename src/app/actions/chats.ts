@@ -1,5 +1,6 @@
 "use server";
 
+import axios from 'axios';
 import { cookies } from "next/headers";
 
 // Hàm action để fetch chats
@@ -39,22 +40,24 @@ export async function fetchMessagesAction(conversationId: string, limit?: number
     const queryParams = new URLSearchParams();
     if (limit) queryParams.append("limit", limit.toString());
     if (lastEvaluatedMessageId) queryParams.append("lastEvaluatedMessageId", lastEvaluatedMessageId);
-    
+
     const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
 
-    const response = await fetch(`${apiUrl}/conversations/${conversationId}/messages${queryString}`, {
+    const response = await axios.get(`${apiUrl}/conversations/${conversationId}/messages${queryString}`, {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      cache: "no-store",
     });
 
-    if (!response.ok) {
+    if( response.status !== 200) {
       throw new Error("Không thể tải tin nhắn");
     }
+    
+    // Trả về dữ liệu messages từ conversation
+    return response.data || [];
 
-    return await response.json();
+
   } catch (error) {
     console.error("Error fetching messages:", error);
     return { error: "Không thể tải tin nhắn" };

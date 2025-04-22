@@ -25,23 +25,53 @@ export const conversationsApi = baseApi.injectEndpoints({
       providesTags: ['Conversations']
     }),
     
-    // Lấy thông tin chi tiết và tin nhắn của một cuộc trò chuyện
-    getConversationMessages: builder.query<Message[], string | number>({
-      queryFn: async (conversationId) => {
+    // Query endpoint cho việc lấy messages của một conversation
+    getConversationMessages: builder.query<{
+      messages: any[],
+      lastEvaluatedKey: string | null,
+      currentUserId: string,
+      otherUser: any,
+      conversationType: string,
+      conversation: any
+    }, { conversationId: string | number, limit?: number, lastEvaluatedMessageId?: string }>({
+      queryFn: async ({ conversationId, limit, lastEvaluatedMessageId }) => {
         try {
           const { fetchConversationMessagesAction } = await import('@/app/actions/converstations');
-          const result = await fetchConversationMessagesAction(conversationId);
+          const result = await fetchConversationMessagesAction(conversationId, limit, lastEvaluatedMessageId);
           
           if ('error' in result) {
             return { error: { status: 'CUSTOM_ERROR', error: result.error } };
           }
-          
           return { data: result };
         } catch (error) {
+          console.log("Error fetching messages:", error);
+         
           return { error: { status: 'FETCH_ERROR', error: String(error) } };
         }
       },
-      providesTags: (result, error, conversationId) => [{ type: 'Messages', id: conversationId }]
+      // // Merge function để xử lý loadMore tốt hơn
+      serializeQueryArgs: ({ queryArgs }) => {
+        // Serialize tất cả trừ lastEvaluatedMessageId, đảm bảo cache chỉ dựa vào conversationId và limit
+        return { conversationId: queryArgs.conversationId, limit: queryArgs.limit };
+      },
+      // Merge function để hỗ trợ pagination với loadMore
+      merge: (currentCache, newItems, { arg: { lastEvaluatedMessageId } }) => {
+        // Nếu là first load hoặc refresh, thay thế toàn bộ dữ liệu
+        if (!lastEvaluatedMessageId) {
+          return newItems;
+        }
+        
+        // Nếu là loadMore, kết hợp messages từ cache hiện tại và dữ liệu mới
+        return {
+          ...newItems,
+          messages: [...currentCache.messages, ...newItems.messages],
+        };
+      },
+      // Giữ dữ liệu cũ trong cache mỗi khi có fetch mới
+      forceRefetch({ currentArg, previousArg }) {
+        return currentArg !== previousArg;
+      },
+      providesTags: (result, error, { conversationId }) => [{ type: 'Messages', id: conversationId }]
     }),
     
     // Đánh dấu cuộc trò chuyện đã đọc
@@ -86,11 +116,11 @@ export const conversationsApi = baseApi.injectEndpoints({
     }),
 
     // Tạo cuộc trò chuyện nhóm mới
-    createGroupConversation: builder.mutation<Conversation, { groupName: string, participantIds: string[] }>({
-      queryFn: async ({ groupName, participantIds }) => {
+    createGroupConversation: builder.mutation<Conversation, { groupName: string, participantIds: string[], groupImage?: string }>({
+      queryFn: async ({ groupName, participantIds, groupImage }) => {
         try {
           const { createGroupConversationAction } = await import('@/app/actions/converstations');
-          const result = await createGroupConversationAction(groupName, participantIds);
+          const result = await createGroupConversationAction(groupName, participantIds, groupImage);
           
           if ('error' in result) {
             return { error: { status: 'CUSTOM_ERROR', error: result.error } };
@@ -104,9 +134,9 @@ export const conversationsApi = baseApi.injectEndpoints({
       invalidatesTags: ['Conversations']
     }),
 
-    // Gửi tin nhắn mới
-    sendMessage: builder.mutation<Message, { conversationId: string | number, content: string, type?: string }>({
-      queryFn: async ({ conversationId, content, type = 'text' }) => {
+    // Gửi tin nhắn mới - Fixed to prevent stack overflow
+    sendMessage: builder.mutation<any, { conversationId: string | number, content: string, type?: string }>({
+      queryFn: async ({ conversationId, content, type = 'TEXT' }) => {
         try {
           const { sendMessageAction } = await import('@/app/actions/converstations');
           const result = await sendMessageAction(conversationId, content, type);
@@ -122,14 +152,17 @@ export const conversationsApi = baseApi.injectEndpoints({
       },
       // Optimistic update để UI responsive
       async onQueryStarted({ conversationId, content }, { dispatch, queryFulfilled }) {
-        // Lấy thông tin user hiện tại từ browser (nếu có)
+        // Remove any circular references
         let currentUserId = null;
         
         try {
-          const userInfo = typeof localStorage !== 'undefined' ? localStorage.getItem('userInfo') : null;
-          if (userInfo) {
-            const parsedUser = JSON.parse(userInfo);
-            currentUserId = parsedUser.id || null;
+          // Safe way to get user ID to avoid circular references
+          if (typeof window !== 'undefined' && window.localStorage) {
+            const userInfo = window.localStorage.getItem('userInfo');
+            if (userInfo) {
+              const parsedUser = JSON.parse(userInfo);
+              currentUserId = parsedUser.id || null;
+            }
           }
         } catch (error) {
           console.error("Error getting current user ID:", error);
@@ -137,64 +170,90 @@ export const conversationsApi = baseApi.injectEndpoints({
         
         if (!currentUserId) return;
         
-        // Tạo message tạm thời với thông tin cơ bản
+        // Create a simple temporary message object (avoid complex nested objects)
         const tempMessage = {
-          id: Date.now(), // ID tạm thời cho tin nhắn mới
-          messageId: `temp-${Date.now()}`,
           conversationId,
-          senderId: currentUserId,
-          content,
-          type: 'text',
+          messageId: `temp-${Date.now()}`,
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          status: 'sending'
+          senderId: currentUserId,
+          type: 'TEXT',
+          content,
+          status: 'SENDING',
+          isCurrentUserSender: true,
+          sender: {
+            id: currentUserId
+            // Keep sender object minimal to avoid circular references
+          }
         };
         
-        // Thêm message vào cache để hiển thị ngay lập tức
+        // Create a clone to avoid mutation issues and circular references
+        const safeMessage = JSON.parse(JSON.stringify(tempMessage));
+        
+        // Add message to cache with proper type checking
         const patchResult = dispatch(
-          conversationsApi.util.updateQueryData('getConversationMessages', conversationId, (draft) => {
-            draft.push(tempMessage);
-          })
+          conversationsApi.util.updateQueryData(
+            'getConversationMessages', 
+            { conversationId, limit: undefined, lastEvaluatedMessageId: undefined }, 
+            (draft) => {
+              if (draft && Array.isArray(draft.messages)) {
+                draft.messages.push(safeMessage);
+              }
+            }
+          )
         );
         
         try {
-          // Đợi kết quả từ server
+          // Wait for server response
           const { data: sentMessage } = await queryFulfilled;
           
-          // Khi nhận được kết quả, cập nhật lại cache với ID thực tế
+          // When result is received, update cache with actual ID
           dispatch(
-            conversationsApi.util.updateQueryData('getConversationMessages', conversationId, (draft) => {
-              // Tìm và thay thế tin nhắn tạm
-              const index = draft.findIndex(msg => msg.id === tempMessage.id);
-              if (index !== -1) {
-                draft[index] = sentMessage;
+            conversationsApi.util.updateQueryData(
+              'getConversationMessages', 
+              { conversationId, limit: undefined, lastEvaluatedMessageId: undefined }, 
+              (draft) => {
+                if (draft && Array.isArray(draft.messages)) {
+                  // Find and replace temp message
+                  const index = draft.messages.findIndex(msg => msg.messageId === safeMessage.messageId);
+                  if (index !== -1) {
+                    draft.messages[index] = sentMessage;
+                  }
+                }
               }
-            })
+            )
           );
           
-          // Cập nhật danh sách cuộc trò chuyện với tin nhắn mới nhất
+          // Update conversation list with latest message info
           dispatch(
             conversationsApi.util.updateQueryData('getConversations', undefined, (draft) => {
-              const conversation = draft.find(c => c.conversationId === conversationId);
-              if (conversation) {
-                conversation.lastMessageText = sentMessage.content;
-                conversation.lastMessageAt = sentMessage.createdAt;
+              if (Array.isArray(draft)) {
+                const conversation = draft.find(c => c.conversationId === conversationId);
+                if (conversation) {
+                  conversation.lastMessageText = sentMessage.content;
+                  conversation.lastMessageAt = sentMessage.createdAt;
+                }
               }
             })
           );
           
         } catch (error) {
-          // Nếu có lỗi, rollback lại thay đổi optimistic update
+          // If error occurs, rollback optimistic update
           patchResult.undo();
           
-          // Cập nhật lại message status thành error
+          // Update message status to error
           dispatch(
-            conversationsApi.util.updateQueryData('getConversationMessages', conversationId, (draft) => {
-              const index = draft.findIndex(msg => msg.id === tempMessage.id);
-              if (index !== -1) {
-                draft[index].status = 'error';
+            conversationsApi.util.updateQueryData(
+              'getConversationMessages', 
+              { conversationId, limit: undefined, lastEvaluatedMessageId: undefined }, 
+              (draft) => {
+                if (draft && Array.isArray(draft.messages)) {
+                  const index = draft.messages.findIndex(msg => msg.messageId === safeMessage.messageId);
+                  if (index !== -1) {
+                    draft.messages[index].status = 'ERROR';
+                  }
+                }
               }
-            })
+            )
           );
         }
       },

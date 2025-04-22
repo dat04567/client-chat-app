@@ -1,21 +1,21 @@
-'use client';
 import { ChatSidebar } from '@/components';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { redirect } from 'next/navigation';
+import { getLatestConversationIdAction } from '@/app/actions/converstations';
 
-export default function MessagesPage() {
-   const router = useRouter();
-   const [newMessageChat, setNewMessageChat] = useState(null);
-
-   const handleDeleteNewChat = () => {
-      setNewMessageChat(null);
-   };
-
+export default async function MessagesPage() {
+   // Fetch the latest conversation ID directly from the server
+   // const { latestConversationId, error } = await getLatestConversationIdAction();
+   
+   // // If we have a latest conversation, redirect to it
+   // if (latestConversationId) {
+   //    redirect(`/messages/${latestConversationId}`);
+   // }
+   
+   // If no conversation exists or there was an error, show the empty messages page
    return (
       <>
          <ChatSidebar 
-            newMessageChat={newMessageChat} 
-            onDeleteNewChat={handleDeleteNewChat} 
+          
          />
       </>
    );

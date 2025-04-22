@@ -19,15 +19,11 @@ export async function fetchConversationsAction(limit = 20, lastEvaluatedKey?: st
       }
     });
 
-
-
     // Kiểm tra kết quả từ response
     if (response.status !== 200) {
       throw new Error("Không thể tải danh sách cuộc trò chuyện");
     }
 
-    console.log("Conversations:", response.data);
-    
 
     // Trả về dữ liệu conversations
     return response.data.conversations || [];
@@ -38,27 +34,34 @@ export async function fetchConversationsAction(limit = 20, lastEvaluatedKey?: st
 }
 
 // Hàm action để fetch messages trong một conversation
-export async function fetchConversationMessagesAction(conversationId: string | number) {
+export async function fetchConversationMessagesAction(conversationId: string | number, limit?: number, lastEvaluatedMessageId?: string) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
     const token = cookies().get("token")?.value;
 
-    const response = await axios.get(`${apiUrl}/conversations/${conversationId}`, {
+    // 2. Fetch messages with pagination support
+    const params: Record<string, string | number> = {};
+    if (limit) params.limit = limit;
+    if (lastEvaluatedMessageId) params.lastEvaluatedMessageId = lastEvaluatedMessageId;
+    
+    const messagesResponse = await axios.get(`${apiUrl}/conversations/${conversationId}/messages`, {
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${token}`
-      }
+      },
+      params
     });
 
-    // Kiểm tra kết quả từ response
-    if (response.status !== 200) {
+    if (messagesResponse.status !== 200) {
       throw new Error("Không thể tải tin nhắn");
-    }
+    }    
+    // Combine conversation metadata with messages
 
-    // Trả về dữ liệu messages từ conversation
-    return response.data.messages || [];
+    return {
+      ...messagesResponse.data,
+    }
   } catch (error) {
-    console.error(`Error fetching messages for conversation ${conversationId}:`, error);
+    
     return { error: "Không thể tải tin nhắn" };
   }
 }
@@ -121,7 +124,7 @@ export async function createOneToOneConversationAction(recipientId: string, cont
 }
 
 // Hàm action để tạo một nhóm trò chuyện mới
-export async function createGroupConversationAction(groupName: string, participantIds: string[]) {
+export async function createGroupConversationAction(groupName: string, participantIds: string[], groupImage?: string) {
   try {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
     const token = cookies().get("token")?.value;
@@ -130,7 +133,8 @@ export async function createGroupConversationAction(groupName: string, participa
       `${apiUrl}/conversations/group`, 
       {
         groupName,
-        participantIds
+        participantIds,
+        groupImage // Thêm groupImage vào payload nếu có
       },
       {
         headers: {
@@ -181,6 +185,47 @@ export async function sendMessageAction(conversationId: string | number, content
   } catch (error) {
     console.error(`Error sending message to conversation ${conversationId}:`, error);
     return { error: "Không thể gửi tin nhắn" };
+  }
+}
+
+// Hàm action để lấy ID cuộc trò chuyện mới nhất
+export async function getLatestConversationIdAction() {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+    const token = cookies().get("token")?.value;
+    
+    if (!token) {
+      return { error: "Người dùng chưa đăng nhập" };
+    }
+    
+    // Fetch conversations with limit 1 and sort by most recent
+    const response = await axios.get(`${apiUrl}/conversations`, {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      params: {
+        limit: 1,
+        sort: "newest"  // Yêu cầu API sắp xếp theo mới nhất (nếu API hỗ trợ)
+      }
+    });
+
+    if (response.status !== 200) {
+      throw new Error("Không thể tải danh sách cuộc trò chuyện");
+    }
+
+    // Kiểm tra có conversations hay không
+    const conversations = response.data.conversations || [];
+    if (conversations.length === 0) {
+      return { latestConversationId: null };
+    }
+
+    // Trả về ID của cuộc trò chuyện mới nhất
+    return { latestConversationId: conversations[0].conversationId };
+    
+  } catch (error) {
+    console.error("Error fetching latest conversation:", error);
+    return { error: "Không thể tải cuộc trò chuyện mới nhất" };
   }
 }
 

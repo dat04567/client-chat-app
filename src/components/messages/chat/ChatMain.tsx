@@ -2,26 +2,96 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import ChatHeader from './ChatHeader';
-import MessageList from './MessageList';
+import MessageList, { Message } from './MessageList';
 import ChatInput from './ChatInput';
 import ChatOptions from './ChatOptions';
+import useSocket from '@/hooks/useSocket';
 
-const ChatMain = ({ chat, showOptions, onToggleOptions, isNewChat = false }) => {
-  const [messages, setMessages] = useState([
-    // For new chats, start with an empty conversation
-    ...(isNewChat ? [] : [
-      // Example messages - in a real app these would come from an API
-      { id: 1, sender: 'other', content: 'Hi there! How are you doing today?', time: '10:00 AM' },
-      { id: 2, sender: 'me', content: 'I\'m doing well, thanks for asking!', time: '10:02 AM' },
-      { id: 3, sender: 'me', content: 'How about you?', time: '10:02 AM' },
-      { id: 4, sender: 'other', content: 'I\'m great! Just working on some projects.', time: '10:05 AM' },
-      { id: 5, sender: 'other', content: 'By the way, have you seen the latest updates?', time: '10:06 AM' },
-      { id: 6, sender: 'me', content: 'Not yet, what updates?', time: '10:10 AM' },
-    ])
-  ]);
+interface ChatMainProps {
+  chat?: any;
+  showOptions?: boolean;
+  onToggleOptions?: () => void;
+  isNewChat?: boolean;
+  conversationData?: {
+    messages: Message[];
+    lastEvaluatedKey: string | null;
+    currentUserId: string;
+    otherUser: {
+      id: string;
+      username: string;
+      profile: {
+        firstName: string;
+        lastName: string;
+        phone: string;
+      }
+    };
+    conversationType: string;
+    conversation?: any;
+  };
+}
 
+const ChatMain: React.FC<ChatMainProps> = ({ 
+  chat, 
+  showOptions, 
+  onToggleOptions, 
+  isNewChat = false,
+  conversationData
+}) => {
+  // Fallback messages for development/testing
+  const [messages, setMessages] = useState<Message[]>([]);
   const [searchVisible, setSearchVisible] = useState(false);
-  const chatBodyRef = useRef(null);
+  const [isConversationJoined, setIsConversationJoined] = useState(false);
+  const chatBodyRef = useRef<HTMLDivElement>(null);
+
+  // Socket connection
+  const { socket, on, off, emit, isConnected } = useSocket({
+    autoConnect: true,
+  });
+
+  // Initialize messages from conversationData if available
+  useEffect(() => {
+    if (conversationData?.messages) {
+      setMessages(conversationData.messages);
+    }
+  }, [conversationData]);
+
+  // Set up socket event listeners
+  useEffect(() => {
+    if (isConnected && conversationData?.conversation?.conversationId) {
+      const conversationId = conversationData.conversation.conversationId;
+      
+      // Listen for successful connection to conversation
+      on('open-conversation-success', (data) => {
+        if (data.conversationId === conversationId) {
+          console.log(`Successfully joined conversation: ${conversationId}`);
+          setIsConversationJoined(true);
+        }
+      });
+      
+      // Emit open-conversation event when component mounts
+      emit('open-conversation', { conversationId });
+      
+      // Listen for new messages
+      on('new-message', (newMessage) => {
+        if (newMessage.conversationId === conversationId) {
+          setMessages(prev => [...prev, newMessage]);
+        }
+      });
+      
+      // Listen for errors
+      on('error', (error) => {
+        console.error('Socket error:', error);
+        // You might want to show an error message to the user
+      });
+    }
+    
+    return () => {
+      // Clean up event listeners
+      off('open-conversation-success');
+      off('new-message');
+      off('error');
+    };
+  }, [isConnected, conversationData, on, off, emit]);
 
   // Scroll to bottom of chat when messages change
   useEffect(() => {
@@ -30,48 +100,73 @@ const ChatMain = ({ chat, showOptions, onToggleOptions, isNewChat = false }) => 
     }
   }, [messages]);
 
-  const handleSendMessage = (content) => {
-    if (!content.trim()) return;
+  const handleSendMessage = (content: string) => {
+    if (!content.trim() || !isConversationJoined) return;
     
-    // Add new message to the list
-    const newMessage = {
-      id: messages.length + 1,
-      sender: 'me',
+    const conversationId = conversationData?.conversation?.conversationId;
+    if (!conversationId) {
+      console.error('No conversation ID available');
+      return;
+    }
+    
+    // Add new message to the local state for immediate display
+    const newMessage: Message = {
+      messageId: `temp-${Date.now()}`,
+      conversationId,
+      senderId: conversationData.currentUserId || 'current-user',
       content,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      createdAt: new Date().toISOString(),
+      type: 'TEXT',
+      status: 'SENDING',
+      isCurrentUserSender: true,
+      sender: {
+        id: conversationData.currentUserId || 'current-user',
+        username: 'Me',
+        profile: {
+          firstName: 'Me',
+          lastName: '',
+          phone: ''
+        }
+      }
     };
     
     setMessages([...messages, newMessage]);
+    
+    // Send the message through the socket connection
+    if (socket && isConnected) {
+      emit('send-message', {
+        conversationId,
+        content,
+        type: 'TEXT'
+      });
+    } else {
+      console.error('Socket not connected - cannot send message');
+    }
   };
 
   return (
     <div className="tyn-main tyn-chat-content" id="tynMain">
-      {/* <ChatHeader 
+      <ChatHeader 
         chat={chat} 
         onToggleSearch={() => setSearchVisible(!searchVisible)}
         onToggleOptions={onToggleOptions}
         searchVisible={searchVisible}
         isNewChat={isNewChat}
       />
-       */}
+      
       <div className="tyn-chat-body js-scroll-to-end" id="tynChatBody" ref={chatBodyRef}>
-        {isNewChat && messages.length === 0 ? (
-          <div className="tyn-chat-welcome text-center py-5">
-            <div className="tyn-chat-welcome-icon mb-3">
-              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" className="bi bi-chat-text" viewBox="0 0 16 16">
-                <path d="M2.678 11.894a1 1 0 0 1 .287.801 10.97 10.97 0 0 1-.398 2c1.395-.323 2.247-.697 3.25-.97a1 1 0 0 1 .71.074A8.06 8.06 0 0 0 8 14c3.996 0 7-2.807 7-6 0-3.192-3.004-6-7-6S1 4.808 1 8c0 1.468.617 2.83 1.678 3.894zm-.493 3.905a21.682 21.682 0 0 1-.713.129c-.2.032-.352-.176-.273-.362a9.68 9.68 0 0 0 .244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9.06 9.06 0 0 1-2.347-.306c-.52.263-1.639.742-3.468 1.105z"/>
-                <path d="M4 5.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5zM4 8a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7A.5.5 0 0 1 4 8zm0 2.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 1-.5-.5z"/>
-              </svg>
-            </div>
-            <h4 className="mb-2">Start a New Conversation</h4>
-            <p className="text-muted">Type a message below to start chatting</p>
-          </div>
-        ) : (
-          <MessageList messages={messages} />
-        )}
+        <MessageList 
+          messages={messages} 
+          currentUserId={conversationData?.currentUserId || ''} 
+          otherUser={conversationData?.otherUser}
+          conversationType={conversationData?.conversationType} 
+        />
       </div>
       
-      <ChatInput onSendMessage={handleSendMessage} />
+      <ChatInput 
+        onSendMessage={handleSendMessage} 
+        isConversationJoined={isConversationJoined}
+      />
       
       {showOptions && (
         <ChatOptions chat={chat} isNewChat={isNewChat} />

@@ -12,7 +12,11 @@ type NavItemProps = {
 
 const NavItem = ({ href, icon, label, className = '' }: NavItemProps) => {
    const pathname = usePathname();
-   const isActive = pathname === href;
+   // Check if the current path starts with the href (to handle nested routes)
+   // This will handle cases like /messages/15d092d5-523b-4beb-a73f-2dc051b698ee
+   const isActive = href === '/' 
+     ? pathname === '/' 
+     : pathname === href || pathname.startsWith(`${href}/`);
 
    return (
       <li className={`tyn-appbar-item ${className} ${isActive ? 'active current-page' : ''}`}>

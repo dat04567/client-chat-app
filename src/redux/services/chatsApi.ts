@@ -55,10 +55,22 @@ export const chatsApi = baseApi.injectEndpoints({
           return { error: { status: 'FETCH_ERROR', error: String(error) } };
         }
       },
-      // Optimistic update để UI responsive
-      async onQueryStarted({ chatId, content }, { dispatch, queryFulfilled, getState }) {
-        // Lấy userID của user hiện tại để tạo tin nhắn tạm thời
-        const currentUserId = null;
+      // Optimistic update để UI responsive - Fixed to prevent stack overflow
+      async onQueryStarted({ chatId, content }, { dispatch, queryFulfilled }) {
+        // Get current user ID from localStorage or other source
+        let currentUserId = null;
+        try {
+          // Safely get user ID from storage if available
+          if (typeof window !== 'undefined' && localStorage) {
+            const userInfo = localStorage.getItem('userInfo');
+            if (userInfo) {
+              const user = JSON.parse(userInfo);
+              currentUserId = user.id;
+            }
+          }
+        } catch (e) {
+          console.error('Error getting current user ID:', e);
+        }
         
         if (!currentUserId) return;
         
@@ -75,7 +87,10 @@ export const chatsApi = baseApi.injectEndpoints({
         // Thêm message vào cache ngay lập tức
         const patchResult = dispatch(
           chatsApi.util.updateQueryData('getChatMessages', chatId, (draft) => {
-            draft.push(tempMessage);
+            // Use immutable pattern with push
+            if (Array.isArray(draft)) {
+              draft.push(tempMessage);
+            }
           })
         );
         
@@ -87,9 +102,11 @@ export const chatsApi = baseApi.injectEndpoints({
           dispatch(
             chatsApi.util.updateQueryData('getChatMessages', chatId, (draft) => {
               // Tìm và thay thế tin nhắn tạm
-              const index = draft.findIndex(msg => msg.id === tempMessage.id);
-              if (index !== -1) {
-                draft[index] = sentMessage;
+              if (Array.isArray(draft)) {
+                const index = draft.findIndex(msg => msg.id === tempMessage.id);
+                if (index !== -1) {
+                  draft[index] = sentMessage;
+                }
               }
             })
           );
@@ -97,10 +114,12 @@ export const chatsApi = baseApi.injectEndpoints({
           // Cập nhật danh sách chat với tin nhắn mới nhất
           dispatch(
             chatsApi.util.updateQueryData('getChats', undefined, (draft) => {
-              const chat = draft.find(c => c.id === chatId);
-              if (chat) {
-                chat.lastMessage = sentMessage.content;
-                chat.lastMessageTime = sentMessage.timestamp;
+              if (Array.isArray(draft)) {
+                const chat = draft.find(c => c.id === chatId);
+                if (chat) {
+                  chat.lastMessage = sentMessage.content;
+                  chat.lastMessageTime = sentMessage.timestamp;
+                }
               }
             })
           );
@@ -112,9 +131,11 @@ export const chatsApi = baseApi.injectEndpoints({
           // Cập nhật lại message status thành error
           dispatch(
             chatsApi.util.updateQueryData('getChatMessages', chatId, (draft) => {
-              const index = draft.findIndex(msg => msg.id === tempMessage.id);
-              if (index !== -1) {
-                draft[index].status = 'error';
+              if (Array.isArray(draft)) {
+                const index = draft.findIndex(msg => msg.id === tempMessage.id);
+                if (index !== -1) {
+                  draft[index].status = 'error';
+                }
               }
             })
           );

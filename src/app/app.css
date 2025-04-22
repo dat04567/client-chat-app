@@ -179,7 +179,19 @@ dl {
 }
 .tyn-logo {
   display: inline-flex;
-  height: 200px;
+  height: 32px; /* Reduced from 200px to a more reasonable size */
+}
+
+@media (min-width: 576px) {
+  .tyn-logo {
+    height: 36px;
+  }
+}
+
+@media (min-width: 992px) {
+  .tyn-logo {
+    height: 40px;
+  }
 }
 .tyn-logo svg,
 .tyn-logo img {
@@ -944,7 +956,7 @@ dl {
   --avatar-gap: 0.75rem;
   /* padding: 1rem 0; */
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
 }
 [data-bs-theme="dark"] .tyn-reply {
   --reply-bg: var(--bs-gray-800);

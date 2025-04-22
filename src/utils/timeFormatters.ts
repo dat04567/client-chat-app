@@ -17,6 +17,7 @@ export function formatMessageTime(date: Date | string, format: 'full' | 'time' =
   const messageDate = date instanceof Date ? date : new Date(date);
   const now = new Date();
   
+
   // For messages individual timestamps, just show the time
   if (format === 'time') {
     return messageDate.toLocaleTimeString('vi-VN', {
@@ -25,6 +26,9 @@ export function formatMessageTime(date: Date | string, format: 'full' | 'time' =
       hour12: false
     });
   }
+
+  console.log('messageDate', date);
+  
   
   // For separator timestamps, format appropriately based on how recent
   const isToday = messageDate.toDateString() === now.toDateString();
