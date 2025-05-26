@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useGetFriendsQuery } from '@/redux/services/usersApi';
 import { useInviteToConversationMutation } from '@/redux/services/conversationsApi';
 import { User } from '@/redux/services/types';
+import { toast } from 'react-toastify';
 
 interface AddMembersModalProps {
   conversationId: string;
@@ -18,8 +19,6 @@ const AddMembersModal: React.FC<AddMembersModalProps> = ({ conversationId, onAdd
   // Use RTK Query to fetch contacts
   const { data: contacts, isLoading, error: fetchError } = useGetFriendsQuery();
   
-
-
   
   // Use RTK Query to invite users to conversation
   const [inviteToConversation, { isLoading: isInviting }] = useInviteToConversationMutation();
@@ -86,7 +85,7 @@ const AddMembersModal: React.FC<AddMembersModalProps> = ({ conversationId, onAdd
       setSelectedContacts([]);
     } catch (err) {
       console.error('Error adding members:', err);
-      alert('Failed to add members. Please try again.');
+      toast.error('Không thể thêm thành viên vào cuộc trò chuyện. Vui lòng thử lại sau.');
     }
   };
 
@@ -130,10 +129,10 @@ const AddMembersModal: React.FC<AddMembersModalProps> = ({ conversationId, onAdd
               ) : (
                 filteredContacts.map(contact => (
                   <div 
-                    key={contact.id}
-                    className={`tyn-media-group p-2 rounded ${selectedContacts.includes(contact.id) ? 'bg-light' : ''}`}
+                    key={contact.userId}
+                    className={`tyn-media-group p-2 rounded ${selectedContacts.includes(contact.userId) ? 'bg-light' : ''}`}
                     role="button"
-                    onClick={() => toggleContactSelection(contact.id)}
+                    onClick={() => toggleContactSelection(contact.userId)}
                   >
                     <div className="tyn-media tyn-size-lg">
                       <Image 
@@ -143,7 +142,7 @@ const AddMembersModal: React.FC<AddMembersModalProps> = ({ conversationId, onAdd
                         height={48}
                         className="rounded-circle"
                       />
-                      {selectedContacts.includes(contact.id) && (
+                      {selectedContacts.includes(contact.userId) && (
                         <div className="tyn-media-status bg-success">
                           <em className="icon ni ni-check"></em>
                         </div>

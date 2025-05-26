@@ -235,9 +235,12 @@ export async function inviteToConversationAction(conversationId: string | number
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
     const token = cookies().get("token")?.value;
 
+        console.log(invitedUserId);
+
     const response = await axios.post(
       `${apiUrl}/conversations/${conversationId}/invite`, 
       {
+
         invitedUserId
       },
       {
@@ -247,6 +250,9 @@ export async function inviteToConversationAction(conversationId: string | number
         }
       }
     );
+
+
+    
 
     
     // Kiểm tra kết quả từ response
