@@ -25,6 +25,31 @@ export const conversationsApi = baseApi.injectEndpoints({
       providesTags: ['Conversations']
     }),
     
+    // Lấy thông tin chi tiết của một cuộc trò chuyện với danh sách participants
+    getConversationParticipants: builder.query<{
+      conversation: any, 
+      participants: any[],
+      currentUserId: string
+    }, string | number>({
+      queryFn: async (conversationId) => {
+        try {
+          const { fetchConversationParticipantsAction } = await import('@/app/actions/converstations');
+          const result = await fetchConversationParticipantsAction(conversationId);
+          
+          if ('error' in result) {
+            return { error: { status: 'CUSTOM_ERROR', error: result.error } };
+          }
+          
+          return { data: result };
+        } catch (error) {
+          return { error: { status: 'FETCH_ERROR', error: String(error) } };
+        }
+      },
+      providesTags: (result, error, conversationId) => [
+        { type: 'Conversations', id: conversationId }
+      ]
+    }),
+    
     // Query endpoint cho việc lấy messages của một conversation
     getConversationMessages: builder.query<{
       messages: any[],
@@ -262,6 +287,32 @@ export const conversationsApi = baseApi.injectEndpoints({
         'Conversations'
       ]
     }),
+
+    // Mời người dùng vào cuộc trò chuyện nhóm
+    inviteToConversation: builder.mutation<{ message: string, pendingParticipantIds?: string[] }, { conversationId: string | number, invitedUserId: string }>({
+      queryFn: async ({ conversationId, invitedUserId }) => {
+        try {
+          const { inviteToConversationAction } = await import('@/app/actions/converstations');
+          const result = await inviteToConversationAction(conversationId, invitedUserId);
+          
+          if ('error' in result) {
+            return { 
+              error: { 
+                status: 'CUSTOM_ERROR', 
+                error: result.error 
+              } 
+            };
+          }
+          return { data: result };
+        } catch (error) {
+          return { error: { status: 'FETCH_ERROR', error: String(error) } };
+        }
+      },
+      invalidatesTags: (result, error, { conversationId }) => [
+        { type: 'Messages', id: conversationId },
+        'Conversations'
+      ]
+    }),
   }),
 });
 
@@ -269,8 +320,10 @@ export const conversationsApi = baseApi.injectEndpoints({
 export const {
   useGetConversationsQuery,
   useGetConversationMessagesQuery,
+  useGetConversationParticipantsQuery,
   useMarkConversationAsReadMutation,
   useCreateOneToOneConversationMutation,
   useCreateGroupConversationMutation,
-  useSendMessageMutation
+  useSendMessageMutation,
+  useInviteToConversationMutation
 } = conversationsApi;

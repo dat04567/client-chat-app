@@ -1,6 +1,7 @@
 // import { Inter } from 'next/font/google';
 import './globals.css';
 import './app.css';
+import 'glightbox/dist/css/glightbox.min.css';
 import Script from 'next/script';
 import { Providers } from '@/redux/provider';
 
@@ -15,6 +16,7 @@ export default function RootLayout({ children }) {
          <body className="tyn-body">
             <Providers>{children}</Providers>
             <Script src="/js/bootstrap.js" strategy="afterInteractive" />
+            {/* <Script src="/js/app.js" strategy="afterInteractive" /> */}
          </body>
       </html>
    );

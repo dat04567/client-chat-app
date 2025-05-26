@@ -24,10 +24,11 @@ export async function fetchContactsAction(searchQuery: string = '') {
       }
 
 
+    
       
       return response.data;
    } catch (error) {
-      console.error('Error fetching contacts:', error);
+   
       return {
          sucess: false,
          error: 'Không thể tải danh sách liên hệ'

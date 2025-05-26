@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Navbar from '@/components/layout/Navbar';
-import { NewChatModal } from '@/components';
+import { NewChatModal, AddMembersModal } from '@/components';
 
 interface MessagesLayoutProps {
   children: React.ReactNode;
@@ -18,6 +18,9 @@ const MessagesLayout: React.FC<MessagesLayoutProps> = ({ children }) => {
 
       {/* Modals */}
       <NewChatModal />
+      <AddMembersModal  conversationId=''/>
+
+
     </div>
   );
 };

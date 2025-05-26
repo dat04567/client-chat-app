@@ -2,16 +2,61 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ChatHeader, ChatInput, ChatSidebar, MessageList } from '@/components';
+import { AddMembersModal, ChatHeader, ChatInput, ChatSidebar, MessageList } from '@/components';
 import {
-   useGetConversationMessagesQuery,
-   useSendMessageMutation,
-   useGetConversationsQuery,
-   conversationsApi
+  useGetConversationMessagesQuery,
+  useSendMessageMutation,
+  useGetConversationsQuery,
+  useGetConversationParticipantsQuery,
+  conversationsApi,
+  useInviteToConversationMutation
 } from '@/redux/services/conversationsApi';
+import { useGetFriendsQuery } from '@/redux/services/usersApi';
 import { useSocket } from '@/hooks/useSocket';
 import { useDispatch } from 'react-redux';
 import { AppDispatch } from '@/redux/store';
+import { toast } from 'react-hot-toast';
+
+// Định nghĩa các interface để làm rõ kiểu dữ liệu
+interface Message {
+  id?: string;
+  messageId: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
+  type: string;
+  status: string;
+  senderName?: string;
+  isCurrentUserSender?: boolean;
+  sender?: {
+    id: string;
+    username?: string;
+    profile?: any;
+  };
+}
+
+interface Participant {
+  id: string;
+  isAdmin?: boolean;
+  isOnline?: boolean;
+  profile?: {
+    firstName?: string;
+    lastName?: string;
+    avatar?: string;
+  };
+}
+
+// Các params chuẩn để truy vấn tin nhắn
+const MESSAGE_QUERY_PARAMS = {
+  limit: 20,
+  refetchConfig: {
+    refetchOnMountOrArgChange: false,
+    refetchOnFocus: false,
+    refetchOnReconnect: false,
+  }
+};
 
 export default function ConversationPage() {
    const params = useParams();
@@ -23,6 +68,23 @@ export default function ConversationPage() {
    const [lastEvaluatedMessageId, setLastEvaluatedMessageId] = useState<string | null>(null);
    const [showChatSidebar, setShowChatSidebar] = useState(false);
    const [searchVisible, setSearchVisible] = useState(false);
+   const [searchQuery, setSearchQuery] = useState('');
+   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+   const [isInviting, setIsInviting] = useState(false);
+   const [isInvitingMultiple, setIsInvitingMultiple] = useState(false);
+   const [activeTab, setActiveTab] = useState('options');
+
+   // Add inviteToConversation mutation
+   const [inviteToConversation, { isLoading: isInvitingApi }] = useInviteToConversationMutation();
+
+   // Fetch conversation participants data
+   const {
+      data: participantsData,
+      isLoading: isLoadingParticipants,
+      error: participantsError
+   } = useGetConversationParticipantsQuery(conversationId as string, {
+      refetchOnMountOrArgChange: true
+   });
 
    const messagesEndRef = useRef(null);
    const initialRenderRef = useRef(true);
@@ -53,8 +115,6 @@ export default function ConversationPage() {
       }
       
       return () => {
-         // Clean up event listeners when component unmounts
-         off('join-confirmation');
          off('error');
       };
    }, [isConnected, conversationId, emit, on, off]);
@@ -78,25 +138,17 @@ export default function ConversationPage() {
    } = useGetConversationMessagesQuery(
       {
          conversationId: conversationId as string,
-         limit: 20,
+         limit: MESSAGE_QUERY_PARAMS.limit,
          lastEvaluatedMessageId,
       },
-      {
-         refetchOnMountOrArgChange: false,
-         refetchOnFocus: false,
-         refetchOnReconnect: false,
-         staleTime: 30000,
-      }
+      MESSAGE_QUERY_PARAMS.refetchConfig
    );
+
+
 
    const { data: conversations = [], isLoading: isLoadingConversations } = useGetConversationsQuery(
       undefined,
-      {
-         refetchOnMountOrArgChange: false,
-         refetchOnFocus: false,
-         refetchOnReconnect: false,
-         staleTime: 30000,
-      }
+      MESSAGE_QUERY_PARAMS.refetchConfig
    );
 
    const currentConversation = useMemo(
@@ -109,9 +161,11 @@ export default function ConversationPage() {
    const messages = useMemo(() => conversationData?.messages || [], [conversationData]);
    const otherUser = useMemo(() => conversationData?.otherUser || null, [conversationData]);
    const conversationType = useMemo(
-      () => conversationData?.conversationType || 'ONE-TO-ONE',
-      [conversationData]
+      () => currentConversation?.type || 'ONE-TO-ONE',
+      [currentConversation]
    );
+
+   
    const currentUserId = useMemo(() => conversationData?.currentUserId, [conversationData]);
    const hasMoreMessages = useMemo(
       () => !!conversationData?.lastEvaluatedKey,
@@ -126,52 +180,36 @@ export default function ConversationPage() {
 
    const [sendMessage, { isLoading: isSending }] = useSendMessageMutation();
 
+
+   
+
    useEffect(() => {
       on('new-message', (data) => {
-         if (data.conversationId === conversationId) {
-            const newMessage = {
-               messageId: data.messageId || data.id,
-               conversationId: data.conversationId,
-               senderId: data.senderId,
-               content: data.content,
-               createdAt: data.createdAt || new Date().toISOString(),
-               type: data.type || 'TEXT',
-               status: 'DELIVERED',
-               isCurrentUserSender: data.senderId === currentUserId,
-               sender: data.sender || {
-                  id: data.senderId,
-                  username: data.senderName || 'User',
-                  profile: data.senderProfile || {}
-               }
-            };
+        console.log('New message received:', data);
 
-            dispatch(
-               conversationsApi.util.updateQueryData(
-                  'getConversationMessages',
-                  {
-                     conversationId: conversationId as string,
-                     limit: 20,
-                     lastEvaluatedMessageId: null,
-                  },
-                  (draft) => {
-                     if (draft && Array.isArray(draft.messages)) {
-                        const exists = draft.messages.some(msg => 
-                           msg.messageId === newMessage.messageId
-                        );
-                        
-                        if (!exists) {
-                           draft.messages.push(newMessage);
-                        }
-                     }
-                  }
-               )
+        
+        
+          dispatch(
+              conversationsApi.endpoints.getConversationMessages.initiate(
+                {
+                  conversationId: conversationId as string,
+                  limit: MESSAGE_QUERY_PARAMS.limit,
+                  lastEvaluatedMessageId: null,
+                }, 
+                { forceRefetch: true }
+              )
             );
-         }
+            // Scroll to bottom after new message
+            if (messagesEndRef.current) {
+              setTimeout(() => {
+                messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+              }, 100);
+            }
       });
 
-      return () => {
-         off('new-message');
-      };
+        return () => {
+          off('new-message');
+        };
    }, [conversationId, on, off, dispatch, currentUserId]);
 
    const handleLoadMoreMessages = useCallback(() => {
@@ -188,52 +226,105 @@ export default function ConversationPage() {
       }
    }, [isLoadingMore, hasMoreMessages, messages]);
 
-   const handleSendMessage = useCallback(
-      (content: string) => {
-         if (content.trim()) {
-            const messageData = {
-               conversationId: conversationId as string,
-               content: content.trim(),
-               senderId: currentUserId,
-               type: 'TEXT',
-               createdAt: new Date().toISOString(),
-            };
+  const handleSendMessage = useCallback(
+    (content) => {
+      console.log('Sending content:', content);
+      
+      if (typeof content === 'string' && content.trim()) {
+       // Handle text message
+       const messageData: Message = {
+        conversationId: conversationId as string,
+        content: content.trim(),
+        senderId: currentUserId,
+        type: 'TEXT',
+        createdAt: new Date().toISOString(),
+        messageId: `temp-${Date.now()}`,
+        status: 'SENDING',
+        isCurrentUserSender: true,
+        sender: {
+          id: currentUserId,
+        }
+       };
 
-            emit('send-message', messageData);
+       console.log('Sending text message data:', messageData);
+       emit('send-message', messageData);
+      } else if (typeof content === 'object' && content !== null) {
+       const messageData: Message = {
+        conversationId: conversationId as string,
+        content: content.fileName,
+        senderId: currentUserId,
+        type: 'MEDIA',
+        createdAt: new Date().toISOString(),
+        messageId: `temp-${Date.now()}`,
+        status: 'SENDING',
+        isCurrentUserSender: true,
+        sender: {
+          id: currentUserId,
+        }
+       };
 
-            const optimisticMessage = {
-               messageId: `temp-${Date.now()}`,
-               conversationId: conversationId as string,
-               senderId: currentUserId,
-               content: content.trim(),
-               createdAt: new Date().toISOString(),
-               type: 'TEXT',
-               status: 'SENDING',
-               isCurrentUserSender: true,
-               sender: {
-                  id: currentUserId,
-               }
-            };
+    
+       emit('send-message', messageData);
+      }
+    },
+    [conversationId, currentUserId, emit]
+  );
 
-            dispatch(
-               conversationsApi.util.updateQueryData(
-                  'getConversationMessages',
-                  {
-                     conversationId: conversationId as string,
-                     limit: 20,
-                     lastEvaluatedMessageId: null,
-                  },
-                  (draft) => {
-                     if (draft && Array.isArray(draft.messages)) {
-                        draft.messages.push(optimisticMessage);
-                     }
-                  }
-               )
-            );
-         }
-      },
-      [conversationId, currentUserId, emit, dispatch]
-   );
+   const handleInviteUser = useCallback((userId: string) => {
+      setIsInviting(true);
+      
+      // Call the API to invite the user
+      inviteToConversation({
+         conversationId: conversationId as string,
+         invitedUserId: userId
+      })
+      .unwrap()
+      .then(() => {
+         // On success, add user to selected list
+         setSelectedUserIds((prev) => [...prev, userId]);
+         toast.success('Đã mời thành công vào nhóm chat');
+      })
+      .catch((error) => {
+         toast.error(error?.data?.message || 'Không thể mời người dùng này');
+      })
+      .finally(() => {
+         setIsInviting(false);
+      });
+   }, [conversationId, inviteToConversation]);
+
+   const handleInviteSelectedUsers = useCallback(() => {
+      // This function will handle batch invitations one by one
+      setIsInvitingMultiple(true);
+      
+      // Use Promise.all to send all invitations in parallel
+      const invitePromises = selectedUserIds.map(userId => 
+         inviteToConversation({
+            conversationId: conversationId as string,
+            invitedUserId: userId
+         }).unwrap()
+      );
+      
+      Promise.all(invitePromises)
+         .then(() => {
+            toast.success('Đã mời tất cả thành viên đã chọn vào nhóm chat');
+            setSelectedUserIds([]);
+         })
+         .catch((error) => {
+            toast.error('Có lỗi xảy ra khi mời một số thành viên');
+         })
+         .finally(() => {
+            setIsInvitingMultiple(false);
+         });
+   }, [conversationId, selectedUserIds, inviteToConversation]);
+
+   // Get contacts for inviting to group chat
+   const {
+      data: contacts,
+      isLoading: isLoadingContacts,
+      error: errorContacts
+   } = useGetFriendsQuery(searchQuery, {
+      skip: searchQuery.length < 2 && selectedUserIds.length === 0
+   });
 
    if (isLoadingMessages || isLoadingConversations) {
       return (
@@ -287,9 +378,6 @@ export default function ConversationPage() {
 
    const isOnline = otherUser?.isOnline || false;
 
-
-  
-   
    return (
       <>
          <ChatSidebar conversationId={conversationId as string} />
@@ -338,11 +426,23 @@ export default function ConversationPage() {
                       <div className="simplebar-content-wrapper" tabIndex={0} role="region" aria-label="scrollable content" style={{ height: '100%', overflow: 'hidden scroll' }}>
                         <div className="simplebar-content" style={{ padding: 0 }}>
                           <div className="tyn-chat-cover">
-                            <img src={partnerProfile?.coverImage || "images/cover/1.jpg"} alt="" />
+                            <Image 
+                              src={partnerProfile?.coverImage || "/images/cover/1.jpg"} 
+                              alt="Cover image" 
+                              width={500}
+                              height={200}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
                           </div>
                           <div className="tyn-media-group tyn-media-vr tyn-media-center mt-n4">
-                            <div className="tyn-media tyn-size-xl border border-2 border-white">
-                              <img src={partnerProfile?.avatar || "images/avatar/1.jpg"} alt="" />
+                            <div className="tyn-media tyn-size-xl border-white" style={{ border: '2px solid white' }}>
+                              <Image 
+                                src={partnerProfile?.avatar || "/images/avatar/1.jpg"} 
+                                alt="Profile image"
+                                width={80}
+                                height={80}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                              />
                             </div>
                             <div className="tyn-media-col">
                               <div className="tyn-media-row">
@@ -381,14 +481,6 @@ export default function ConversationPage() {
                                 </button>
                               </li>
                               <li className="nav-item" role="presentation">
-                                <button className="nav-link" data-bs-toggle="tab" data-bs-target="#chat-members" type="button" aria-selected="false" tabIndex={-1} role="tab">
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-people-fill" viewBox="0 0 16 16">
-                                    <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7Zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-5.784 6A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216ZM4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/>
-                                  </svg>
-                                  <span>Members</span>
-                                </button>
-                              </li>
-                              <li className="nav-item" role="presentation">
                                 <button className="nav-link active" data-bs-toggle="tab" data-bs-target="#chat-options" type="button" aria-selected="true" role="tab">
                                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-sliders" viewBox="0 0 16 16">
                                     <path fillRule="evenodd" d="M11.5 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M9.05 3a2.5 2.5 0 0 1 4.9 0H16v1h-2.05a2.5 2.5 0 0 1-4.9 0H0V3zM4.5 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3M2.05 8a2.5 2.5 0 0 1 4.9 0H16v1H6.95a2.5 2.5 0 0 1-4.9 0H0V8zm9.45 4a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m-2.45 1a2.5 2.5 0 0 1 4.9 0H16v1h-2.05a2.5 2.5 0 0 1-4.9 0H0v-1z"></path>
@@ -396,6 +488,26 @@ export default function ConversationPage() {
                                   <span>Options</span>
                                 </button>
                               </li>
+                              {conversationType === 'GROUP' && (
+                                <li className="nav-item add-members-tab" role="presentation">
+                                  <button 
+                                    className="nav-link" 
+                                    data-bs-toggle="tab" 
+                                    data-bs-target="#chat-add-members-tab" 
+                                    id="add-members-tab-btn"
+                                    type="button" 
+                                    aria-selected="false" 
+                                    tabIndex={-1} 
+                                    role="tab"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-plus" viewBox="0 0 16 16">
+                                      <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0m4 8c0 1-1 1-1 1H1s-1 0-1-1 1-4 6-4 6 3 6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C9.516 10.68 8.289 10 6 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664z"/>
+                                      <path fillRule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
+                                    </svg>
+                                    <span>Add</span>
+                                  </button>
+                                </li>
+                              )}
                             </ul>
                           </div>
                           <div className="tab-content">
@@ -421,33 +533,33 @@ export default function ConversationPage() {
                                   <div className="tab-pane show active" id="chat-media-images" tabIndex={0} role="tabpanel">
                                     <div className="row g-3">
                                       <div className="col-4">
-                                        <a href="images/gallery/chat/1.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
-                                          <img src="images/gallery/chat/thumb-1.jpg" className="tyn-image" alt="" />
+                                        <a href="/images/gallery/chat/1.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
+                                          <Image src="/images/gallery/chat/thumb-1.jpg" className="tyn-image" alt="Gallery image 1" width={80} height={60} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} />
                                         </a>
                                       </div>
                                       <div className="col-4">
-                                        <a href="images/gallery/chat/2.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
-                                          <img src="images/gallery/chat/thumb-2.jpg" className="tyn-image" alt="" />
+                                        <a href="/images/gallery/chat/2.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
+                                          <Image src="/images/gallery/chat/thumb-2.jpg" className="tyn-image" alt="Gallery image 2" width={80} height={60} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} />
                                         </a>
                                       </div>
                                       <div className="col-4">
-                                        <a href="images/gallery/chat/3.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
-                                          <img src="images/gallery/chat/thumb-3.jpg" className="tyn-image" alt="" />
+                                        <a href="/images/gallery/chat/3.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
+                                          <Image src="/images/gallery/chat/thumb-3.jpg" className="tyn-image" alt="Gallery image 3" width={80} height={60} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} />
                                         </a>
                                       </div>
                                       <div className="col-4">
-                                        <a href="images/gallery/chat/4.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
-                                          <img src="images/gallery/chat/thumb-4.jpg" className="tyn-image" alt="" />
+                                        <a href="/images/gallery/chat/4.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
+                                          <Image src="/images/gallery/chat/thumb-4.jpg" className="tyn-image" alt="Gallery image 4" width={80} height={60} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} />
                                         </a>
                                       </div>
                                       <div className="col-4">
-                                        <a href="images/gallery/chat/5.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
-                                          <img src="images/gallery/chat/thumb-5.jpg" className="tyn-image" alt="" />
+                                        <a href="/images/gallery/chat/5.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
+                                          <Image src="/images/gallery/chat/thumb-5.jpg" className="tyn-image" alt="Gallery image 5" width={80} height={60} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} />
                                         </a>
                                       </div>
                                       <div className="col-4">
-                                        <a href="images/gallery/chat/6.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
-                                          <img src="images/gallery/chat/thumb-6.jpg" className="tyn-image" alt="" />
+                                        <a href="/images/gallery/chat/6.jpg" className="glightbox tyn-thumb" data-gallery="media-photo">
+                                          <Image src="/images/gallery/chat/thumb-6.jpg" className="tyn-image" alt="Gallery image 6" width={80} height={60} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} />
                                         </a>
                                       </div>
                                     </div>
@@ -465,203 +577,94 @@ export default function ConversationPage() {
                               </div>
                             </div>
                             
-                            {/* New Members Tab */}
-                            <div className="tab-pane" id="chat-members" tabIndex={0} role="tabpanel">
-                              <div className="tyn-aside-row py-0">
-                                <ul className="nav nav-tabs nav-tabs-line" role="tablist">
-                                  <li className="nav-item" role="presentation">
-                                    <button className="nav-link active" data-bs-toggle="tab" data-bs-target="#chat-group-members" type="button" aria-selected="true" role="tab">Group Members</button>
-                                  </li>
-                                  <li className="nav-item" role="presentation">
-                                    <button className="nav-link" data-bs-toggle="tab" data-bs-target="#chat-add-members" type="button" aria-selected="false" tabIndex={-1} role="tab">Add Members</button>
-                                  </li>
-                                </ul>
-                              </div>
-                              <div className="tyn-aside-row">
-                                <div className="tab-content">
-                                  <div className="tab-pane show active" id="chat-group-members" tabIndex={0} role="tabpanel">
-                                    <div className="tyn-media-list gap gap-3">
-                                      {/* Example group members - would be replaced with actual data */}
-                                      <li>
-                                        <div className="tyn-media-group">
-                                          <div className="tyn-media tyn-size-lg">
-                                            <img src="images/avatar/1.jpg" alt="" />
-                                          </div>
-                                          <div className="tyn-media-col">
-                                            <div className="tyn-media-row">
-                                              <h6 className="name">Jane Cooper</h6>
-                                            </div>
-                                            <div className="tyn-media-row has-dot-sap">
-                                              <span className="meta">Online</span>
-                                            </div>
-                                          </div>
-                                          <div className="tyn-media-option">
-                                            <ul className="tyn-media-option-list">
-                                              <li>
-                                                <button className="btn btn-icon btn-md btn-pill btn-light">
-                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-dash" viewBox="0 0 16 16">
-                                                    <path d="M12.5 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M11 12h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1 0-1m0-7a3 3 0 1 1-6 0 3 3 0 0 1 6 0M8 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
-                                                    <path d="M8.256 14a4.474 4.474 0 0 1-.229-1.004H3c.001-.246.154-.986.832-1.664C4.484 10.68 5.711 10 8 10c.26 0 .507.009.74.025.226-.341.496-.65.804-.918C9.077 9.038 8.564 9 8 9c-5 0-6 3-6 4s1 1 1 1z"/>
-                                                  </svg>
-                                                </button>
-                                              </li>
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      </li>
-                                      <li>
-                                        <div className="tyn-media-group">
-                                          <div className="tyn-media tyn-size-lg">
-                                            <img src="images/avatar/2.jpg" alt="" />
-                                          </div>
-                                          <div className="tyn-media-col">
-                                            <div className="tyn-media-row">
-                                              <h6 className="name">Robert Fox</h6>
-                                            </div>
-                                            <div className="tyn-media-row has-dot-sap">
-                                              <span className="meta">Offline</span>
-                                            </div>
-                                          </div>
-                                          <div className="tyn-media-option">
-                                            <ul className="tyn-media-option-list">
-                                              <li>
-                                                <button className="btn btn-icon btn-md btn-pill btn-light">
-                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-dash" viewBox="0 0 16 16">
-                                                    <path d="M12.5 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M11 12h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1 0-1m0-7a3 3 0 1 1-6 0 3 3 0 0 1 6 0M8 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
-                                                    <path d="M8.256 14a4.474 4.474 0 0 1-.229-1.004H3c.001-.246.154-.986.832-1.664C4.484 10.68 5.711 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664z"/>
-                                                  </svg>
-                                                </button>
-                                              </li>
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      </li>
-                                      <li>
-                                        <div className="tyn-media-group">
-                                          <div className="tyn-media tyn-size-lg">
-                                            <img src="images/avatar/3.jpg" alt="" />
-                                          </div>
-                                          <div className="tyn-media-col">
-                                            <div className="tyn-media-row">
-                                              <h6 className="name">Esther Howard</h6>
-                                            </div>
-                                            <div className="tyn-media-row has-dot-sap">
-                                              <span className="meta">Online</span>
-                                            </div>
-                                          </div>
-                                          <div className="tyn-media-option">
-                                            <ul className="tyn-media-option-list">
-                                              <li>
-                                                <button className="btn btn-icon btn-md btn-pill btn-light">
-                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-dash" viewBox="0 0 16 16">
-                                                    <path d="M12.5 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M11 12h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1 0-1m0-7a3 3 0 1 1-6 0 3 3 0 0 1 6 0M8 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
-                                                    <path d="M8.256 14a4.474 4.474 0 0 1-.229-1.004H3c.001-.246.154-.986.832-1.664C4.484 10.68 5.711 10 8 10c.26 0 .507.009.74.025.226-.341.496-.65.804-.918C9.077 9.038 8.564 9 8 9c-5 0-6 3-6 4s1 1 1 1z"/>
-                                                  </svg>
-                                                </button>
-                                              </li>
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      </li>
-                                    </div>
-                                  </div>
-                                  <div className="tab-pane" id="chat-add-members" tabIndex={0} role="tabpanel">
-                                    <div className="px-2 mb-3">
-                                      <div className="form-group">
-                                        <div className="form-control-wrap">
-                                          <input type="text" className="form-control form-control-lg" placeholder="Search contacts..." />
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div className="tyn-media-list gap gap-3">
-                                      {/* Example contacts that can be added to the group */}
-                                      <li>
-                                        <div className="tyn-media-group">
-                                          <div className="tyn-media tyn-size-lg">
-                                            <img src="images/avatar/4.jpg" alt="" />
-                                          </div>
-                                          <div className="tyn-media-col">
-                                            <div className="tyn-media-row">
-                                              <h6 className="name">Leslie Alexander</h6>
-                                            </div>
-                                            <div className="tyn-media-row has-dot-sap">
-                                              <span className="meta">Offline</span>
-                                            </div>
-                                          </div>
-                                          <div className="tyn-media-option">
-                                            <ul className="tyn-media-option-list">
-                                              <li>
-                                                <button className="btn btn-icon btn-md btn-pill btn-light">
-                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-plus" viewBox="0 0 16 16">
-                                                    <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0m4 8c0 1-1 1-1 1H1s-1 0-1-1 1-4 6-4 6 3 6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C9.516 10.68 8.289 10 6 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664z"/>
-                                                    <path fill-rule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
-                                                  </svg>
-                                                </button>
-                                              </li>
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      </li>
-                                      <li>
-                                        <div className="tyn-media-group">
-                                          <div className="tyn-media tyn-size-lg">
-                                            <img src="images/avatar/5.jpg" alt="" />
-                                          </div>
-                                          <div className="tyn-media-col">
-                                            <div className="tyn-media-row">
-                                              <h6 className="name">Dianne Russell</h6>
-                                            </div>
-                                            <div className="tyn-media-row has-dot-sap">
-                                              <span className="meta">Online</span>
-                                            </div>
-                                          </div>
-                                          <div className="tyn-media-option">
-                                            <ul className="tyn-media-option-list">
-                                              <li>
-                                                <button className="btn btn-icon btn-md btn-pill btn-light">
-                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-plus" viewBox="0 0 16 16">
-                                                    <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0m4 8c0 1-1 1-1 1H1s-1 0-1-1 1-4 6-4 6 3 6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C9.516 10.68 8.289 10 6 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664z"/>
-                                                    <path fill-rule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
-                                                  </svg>
-                                                </button>
-                                              </li>
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      </li>
-                                      <li>
-                                        <div className="tyn-media-group">
-                                          <div className="tyn-media tyn-size-lg">
-                                            <img src="images/avatar/6.jpg" alt="" />
-                                          </div>
-                                          <div className="tyn-media-col">
-                                            <div className="tyn-media-row">
-                                              <h6 className="name">Theresa Webb</h6>
-                                            </div>
-                                            <div className="tyn-media-row has-dot-sap">
-                                              <span className="meta">Online</span>
-                                            </div>
-                                          </div>
-                                          <div className="tyn-media-option">
-                                            <ul className="tyn-media-option-list">
-                                              <li>
-                                                <button className="btn btn-icon btn-md btn-pill btn-light">
-                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-plus" viewBox="0 0 16 16">
-                                                    <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0m4 8c0 1-1 1-1 1H1s-1 0-1-1 1-4 6-4 6 3 6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C9.516 10.68 8.289 10 6 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664z"/>
-                                                    <path fill-rule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
-                                                  </svg>
-                                                </button>
-                                              </li>
-                                            </ul>
-                                          </div>
-                                        </div>
-                                      </li>
-                                    </div>
-                                    <div className="d-flex justify-content-center mt-3">
-                                      <button className="btn btn-primary">Add Selected Members</button>
-                                    </div>
+                            {/* Updated Group Members Tab */}
+                   
+                            
+                            <div className="tab-pane" id="chat-add-members-tab" tabIndex={0} role="tabpanel">
+                              <div className="px-2 mb-3">
+                                <div className="form-group">
+                                  <div className="form-control-wrap">
+                                    <input 
+                                      type="text" 
+                                      className="form-control form-control-lg" 
+                                      placeholder="Tìm kiếm liên hệ..." 
+                                      value={searchQuery}
+                                      onChange={(e) => setSearchQuery(e.target.value)}
+                                    />
                                   </div>
                                 </div>
+                              </div>
+                              <div className="tyn-media-list gap gap-3">
+                                {isLoadingContacts ? (
+                                  <div className="d-flex justify-content-center my-3">
+                                    <div className="spinner-border text-primary" role="status">
+                                      <span className="visually-hidden">Đang tải...</span>
+                                    </div>
+                                  </div>
+                                ) : errorContacts ? (
+                                  <div className="text-center my-3 text-danger">
+                                    <p>Lỗi khi tải danh sách liên hệ. Vui lòng thử lại.</p>
+                                  </div>
+                                ) : contacts && contacts.length > 0 ? (
+                                  contacts.map((contact) => (
+                                    <li key={contact.id}>
+                                      <div className="tyn-media-group">
+                                        <div className="tyn-media tyn-size-lg">
+                                          <Image 
+                                            src={contact?.profile?.avatar || "/images/avatar/default.png"} 
+                                            alt="Contact avatar"
+                                            width={48}
+                                            height={48}
+                                            className="tyn-image"
+                                          />
+                                        </div>
+                                        <div className="tyn-media-col">
+                                          <div className="tyn-media-row">
+                                            <h6 className="name">{`${contact?.profile?.lastName || ''} ${contact?.profile?.firstName || ''}`}</h6>
+                                          </div>
+                                          <div className="tyn-media-row has-dot-sap">
+                                            <span className="meta">{contact.isOnline ? 'Đang hoạt động' : 'Không hoạt động'}</span>
+                                          </div>
+                                        </div>
+                                        <div className="tyn-media-option">
+                                          <ul className="tyn-media-option-list">
+                                            <li>
+                                              <button 
+                                                className="btn btn-icon btn-md btn-pill btn-light"
+                                                onClick={() => handleInviteUser(contact.id)}
+                                                disabled={isInviting || selectedUserIds.includes(contact.id)}
+                                              >
+                                                {selectedUserIds.includes(contact.id) ? (
+                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-check" viewBox="0 0 16 16">
+                                                    <path d="M10.97 4.97a.75.75 0 0 1 1.07 1.05l-3.99 4.99a.75.75 0 0 1-1.08.02L4.324 8.384a.75.75 0 1 1 1.06-1.06l2.094 2.093 3.473-4.425z" />
+                                                  </svg>
+                                                ) : (
+                                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-plus" viewBox="0 0 16 16">
+                                                    <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0m4 8c0 1-1 1-1 1H1s-1 0-1-1 1-4 6-4 6 3 6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C9.516 10.68 8.289 10 6 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664z"/>
+                                                    <path fillRule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
+                                                  </svg>
+                                                )}
+                                              </button>
+                                            </li>
+                                          </ul>
+                                        </div>
+                                      </div>
+                                    </li>
+                                  ))
+                                ) : (
+                                  <div className="text-center my-3">
+                                    <p>Không tìm thấy liên hệ nào. Thử tìm kiếm khác.</p>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="d-flex justify-content-center mt-3">
+                                <button 
+                                  className="btn btn-primary"
+                                  onClick={handleInviteSelectedUsers}
+                                  disabled={selectedUserIds.length === 0 || isInvitingMultiple}
+                                >
+                                  {isInvitingMultiple ? 'Đang thêm...' : 'Thêm thành viên đã chọn'}
+                                </button>
                               </div>
                             </div>
                             
@@ -673,6 +676,9 @@ export default function ConversationPage() {
                                   </li>
                                   <li className="nav-item" role="presentation">
                                     <button className="nav-link" data-bs-toggle="tab" data-bs-target="#chat-options-manage" type="button" aria-selected="false" tabIndex={-1} role="tab"> Manage </button>
+                                  </li>
+                                   <li className="nav-item" role="presentation">
+                                    <button className="nav-link" data-bs-toggle="tab" data-bs-target="#chat-options-members" type="button" aria-selected="false" tabIndex={-1} role="tab"> Members </button>
                                   </li>
                                 </ul>
                               </div>
@@ -702,17 +708,38 @@ export default function ConversationPage() {
                                         <div className="row g-3">
                                           <div className="col-4">
                                             <button className="tyn-thumb">
-                                              <img src="images/gallery/chat/thumb-1.jpg" className="tyn-image" alt="" />
+                                              <Image 
+                                                src="/images/gallery/chat/thumb-1.jpg" 
+                                                className="tyn-image" 
+                                                alt="Background option 1" 
+                                                width={80}
+                                                height={60}
+                                                style={{ width: '100%', height: 'auto', objectFit: 'cover' }}
+                                              />
                                             </button>
                                           </div>
                                           <div className="col-4">
                                             <button className="tyn-thumb">
-                                              <img src="images/gallery/chat/thumb-2.jpg" className="tyn-image" alt="" />
+                                              <Image 
+                                                src="/images/gallery/chat/thumb-2.jpg" 
+                                                className="tyn-image" 
+                                                alt="Background option 2" 
+                                                width={80}
+                                                height={60}
+                                                style={{ width: '100%', height: 'auto', objectFit: 'cover' }}
+                                              />
                                             </button>
                                           </div>
                                           <div className="col-4">
                                             <button className="tyn-thumb">
-                                              <img src="images/gallery/chat/thumb-3.jpg" className="tyn-image" alt="" />
+                                              <Image 
+                                                src="/images/gallery/chat/thumb-3.jpg" 
+                                                className="tyn-image" 
+                                                alt="Background option 3" 
+                                                width={80}
+                                                height={60}
+                                                style={{ width: '100%', height: 'auto', objectFit: 'cover' }}
+                                              />
                                             </button>
                                           </div>
                                         </div>
@@ -723,7 +750,14 @@ export default function ConversationPage() {
                                           <li>
                                             <div className="tyn-media-group">
                                               <div className="tyn-media tyn-size-lg">
-                                                <img src={partnerProfile?.avatar || "images/avatar/1.jpg"} alt="" />
+                                                <Image 
+                                                  src={partnerProfile?.avatar || "/images/avatar/1.jpg"}
+                                                  alt="User avatar"
+                                                  width={48}
+                                                  height={48}
+                                                  className="tyn-image"
+                                                  style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                                                />
                                               </div>
                                               <div className="tyn-media-col">
                                                 <div className="tyn-media-row">
@@ -739,7 +773,7 @@ export default function ConversationPage() {
                                                     <button className="btn btn-icon btn-md btn-pill btn-light">
                                                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-pencil-square" viewBox="0 0 16 16">
                                                         <path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"></path>
-                                                        <path fillRule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
+                                                        <path fillRule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v-6a.5.5 0 0 1-.5-.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
                                                       </svg>
                                                     </button>
                                                   </li>
@@ -788,6 +822,8 @@ export default function ConversationPage() {
                                           </a>
                                         </li>
                                       )}
+
+                                      
                                       <li>
                                         <a href="#" className="tyn-file">
                                           <div className="tyn-media-group">
@@ -820,6 +856,91 @@ export default function ConversationPage() {
                                       </li>
                                     </ul>
                                   </div>
+                                  <div className="tab-pane" id="chat-options-members" tabIndex={0} role="tabpanel">
+                                    <ul className="tyn-media-list gap gap-3">
+                                      {isLoadingParticipants ? (
+                                        <div className="d-flex justify-content-center my-3">
+                                          <div className="spinner-border text-primary" role="status">
+                                            <span className="visually-hidden">Đang tải...</span>
+                                          </div>
+                                        </div>
+                                      ) : participantsError ? (
+                                        <div className="text-center my-3 text-danger">
+                                          <p>Lỗi khi tải danh sách thành viên. Vui lòng thử lại.</p>
+                                        </div>
+                                      ) : participantsData && participantsData.participants && participantsData.participants.length > 0 ? (
+                                        participantsData.participants.map((participant: Participant) => (
+                                          <li key={participant.id}>
+                                            <div className="tyn-media-group">
+                                                <div className="tyn-media tyn-size-lg">
+                                                  <Image 
+                                                    src={participant.profile?.avatar || "/images/avatar/default.png"} 
+                                                    alt="User avatar"
+                                                    width={48}
+                                                    height={48}
+                                                    className="tyn-image"
+                                                    style={{ objectFit: 'cover' }}
+       
+                                                  />
+
+                                                </div>
+                                              <div className="tyn-media-col">
+                                                <div className="tyn-media-row">
+                                                  <h6 className="name">{`${participant.profile?.lastName || ''} ${participant.profile?.firstName || ''}`}</h6>
+                                                  {participant.id === participantsData.currentUserId && <span className="badge bg-primary ms-1">Bạn</span>}
+                                                  {participant.isAdmin && <span className="badge bg-success ms-1">Admin</span>}
+                                                </div>
+                                                <div className="tyn-media-row has-dot-sap">
+                                                  <span className="meta">{participant.isOnline ? 'Đang hoạt động' : 'Không hoạt động'}</span>
+                                                </div>
+                                              </div>
+                                              {participantsData.conversation?.createdBy === participantsData.currentUserId && participant.id !== participantsData.currentUserId && (
+                                                <div className="tyn-media-option">
+                                                  <ul className="tyn-media-option-list">
+                                                    <li>
+                                                      <button className="btn btn-icon btn-md btn-pill btn-light">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-dash" viewBox="0 0 16 16">
+                                                          <path d="M12.5 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M11 12h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1 0-1m0-7a3 3 0 1 1-6 0 3 3 0 0 1 6 0M8 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
+                                                          <path d="M8.256 14a4.474 4.474 0 0 1-.229-1.004H3c.001-.246.154-.986.832-1.664C4.484 10.68 5.711 10 8 10c.26 0 .507.009.74.025.226-.341.496-.65.804-.918C9.077 9.038 8.564 9 8 9c-5 0-6 3-6 4s1 1 1 1z"/>
+                                                        </svg>
+                                                      </button>
+                                                    </li>
+                                                  </ul>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </li>
+                                        ))
+                                      ) : (
+                                        <div className="text-center my-3">
+                                          <p>Không có thành viên nào trong nhóm.</p>
+                                        </div>
+                                      )}
+                                      {conversationType === 'GROUP' && (
+                                        <div className="d-flex justify-content-center mt-4">
+                                          <button 
+                                            className="btn btn-outline-primary"
+                                            onClick={() => {
+                                              // Open the modal instead of switching tab
+                                              const addMembersModal = document.getElementById('addMembersModal');
+                                              // Use Bootstrap's modal method to show the modal
+                                              if (typeof window !== 'undefined' && window.bootstrap) {
+                                                const modal = new window.bootstrap.Modal(addMembersModal);
+                                                modal.show();
+                                              }
+                                            }}
+                                            type="button"
+                                          >
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-plus me-2" viewBox="0 0 16 16">
+                                              <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6m2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0m4 8c0 1-1 1-1 1H1s-1 0-1-1 1-4 6-4 6 3 6 4m-1-.004c-.001-.246-.154-.986-.832-1.664C9.516 10.68 8.289 10 6 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664z"/>
+                                              <path fillRule="evenodd" d="M13.5 5a.5.5 0 0 1 .5.5V7h1.5a.5.5 0 0 1 0 1H14v1.5a.5.5 0 0 1-1 0V8h-1.5a.5.5 0 0 1 0-1H13V5.5a.5.5 0 0 1 .5-.5"/>
+                                            </svg>
+                                            Thêm thành viên
+                                          </button>
+                                        </div>
+                                      )}
+                                    </ul>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -832,6 +953,8 @@ export default function ConversationPage() {
               </div>
             )}
          </div>
+
+      
       </>
    );
 }

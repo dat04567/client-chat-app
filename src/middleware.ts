@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import axios from 'axios';
+import { isAuthenticated, redirectAuthenticatedUser } from './middleware/authMiddleware';
 
-// Handler for root path
+// Handler for root path - sử dụng isAuthenticated từ module auth
 function handleRootPath(request: NextRequest) {
-  // Kiểm tra token trong cookie
-  const token = request.cookies.get('token')?.value;
-  
-  // Nếu đã có token (đã đăng nhập), chuyển hướng đến dashboard
-  if (token) {
+  // Nếu đã đăng nhập, chuyển hướng đến trang messages
+  if (isAuthenticated(request)) {
     return NextResponse.redirect(new URL('/messages', request.url));
   }
   
@@ -38,11 +35,12 @@ function handleVerifyEmailPath(request: NextRequest) {
 
 // Handler for protected routes
 function handleProtectedRoutes(request: NextRequest) {
-  const token = request.cookies.get('token')?.value;
-  
-  // Nếu không có token, chuyển hướng đến trang login
-  if (!token) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  // Sử dụng helper function để kiểm tra xác thực
+  if (!isAuthenticated(request)) {
+    const loginUrl = new URL('/login', request.url);
+    // Thêm returnUrl để sau khi đăng nhập có thể quay lại trang ban đầu
+    loginUrl.searchParams.set('returnUrl', request.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
   }
   
   return NextResponse.next();
@@ -50,10 +48,8 @@ function handleProtectedRoutes(request: NextRequest) {
 
 // Handler for /messages path exact match
 async function handleMessagesPath(request: NextRequest) {
-  const token = request.cookies.get('token')?.value;
-  
-  // If not logged in, redirect to login
-  if (!token) {
+  // Sử dụng helper function để kiểm tra xác thực
+  if (!isAuthenticated(request)) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
   
@@ -68,6 +64,7 @@ async function handleMessagesPath(request: NextRequest) {
   try {
     // Get the most recent conversation and redirect to it
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+    const token = request.cookies.get('token')?.value;
     
     const response = await fetch(`${apiUrl}/conversations`, {
       headers: {
@@ -98,17 +95,50 @@ async function handleMessagesPath(request: NextRequest) {
   return NextResponse.next();
 }
 
+// Handler for login and register pages
+function handleAuthPages(request: NextRequest) {
+  // Nếu đã đăng nhập, chuyển hướng đến trang messages
+  if (isAuthenticated(request)) {
+    return NextResponse.redirect(new URL('/messages', request.url));
+  }
+  
+  return NextResponse.next();
+}
+
 // Map paths to their handlers
 const pathHandlers: Record<string, (request: NextRequest) => Promise<NextResponse> | NextResponse> = {
   '/': handleRootPath,
+  '/login': handleAuthPages,
+  '/register': handleAuthPages,
   '/verify-email': handleVerifyEmailPath,
   '/dashboard': handleProtectedRoutes,
   '/messages': handleMessagesPath,
-  '/contacts': handleProtectedRoutes,
+  '/contacts': (request: NextRequest) => {
+    // Sử dụng helper function để kiểm tra xác thực
+    if (!isAuthenticated(request)) {
+      const loginUrl = new URL('/login', request.url);
+      loginUrl.searchParams.set('returnUrl', request.nextUrl.pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    
+    // If the path is exactly /contacts, redirect to /contacts/all
+    if (request.nextUrl.pathname === '/contacts') {
+      return NextResponse.redirect(new URL('/contacts/all', request.url));
+    }
+    
+    return NextResponse.next();
+  },
 };
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  
+  // Chặn người dùng đã đăng nhập khỏi trang login và register (bao gồm các đường dẫn con)
+  if (pathname.startsWith('/login') || pathname.startsWith('/register')) {
+    // Sử dụng helper function để chuyển hướng người dùng đã đăng nhập
+    const redirectResponse = redirectAuthenticatedUser(request);
+    if (redirectResponse) return redirectResponse;
+  }
   
   // Check for exact path matches
   if (pathHandlers[pathname]) {
@@ -134,6 +164,8 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/', 
+    '/login',
+    '/register',
     '/verify-email/:path*',
     '/dashboard/:path*',
     '/messages',

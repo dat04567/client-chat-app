@@ -13,6 +13,8 @@ import {
 } from '../icons';
 
 const Navbar = () => {
+
+   
    return (
       <nav className="tyn-appbar">
          <div className="tyn-appbar-wrap">
@@ -80,7 +82,7 @@ const Navbar = () => {
                         data-bs-toggle="dropdown"
                         aria-expanded="false">
                         <div className="tyn-media tyn-size-lg tyn-circle">
-                           <Image src="/images/avatar/3.jpg" alt="User" width={50} height={50} />
+                           <Image src="/images/avatar/default.png" alt="User" width={50} height={50} />
                         </div>
                      </button>
                      <div className="dropdown-menu dropdown-menu-end">
@@ -88,7 +90,7 @@ const Navbar = () => {
                            <div className="tyn-media-group">
                               <div className="tyn-media tyn-size-lg">
                                  <Image
-                                    src="/images/avatar/3.jpg"
+                                    src="/images/avatar/default.png"
                                     alt="User"
                                     width={50}
                                     height={50}

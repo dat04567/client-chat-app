@@ -39,7 +39,7 @@
     "**/*.tsx",
     "**/*.js",
     "**/*.jsx"
-  ],
+, "src/app/(contacts)/contacts/page.tsx.aa"  ],
   "exclude": [
     "node_modules"
   ]

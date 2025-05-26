@@ -5,6 +5,8 @@ export * from './authApi';
 // export * from './chatsApi';
 export * from './usersApi';
 export * from './conversationsApi';
+export * from './profileApi';
+export * from './mediaApi';
 export * from './types';
 
 // Export API gốc để sử dụng trong cấu hình store

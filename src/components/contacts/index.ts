@@ -1,1 +1,10 @@
 export { default as AddContactModal } from './AddContactModal';
+export { default as ContactsHeader } from './ContactsHeader';
+export { default as ContactsTabs } from './ContactsTabs';
+export { default as ContactsSearch } from './ContactsSearch';
+export { default as ContactList } from './ContactList';
+export { default as ReceivedRequestsList } from './ReceivedRequestsList';
+export { default as SentRequestsList } from './SentRequestsList';
+export { default as ContactProfile } from './ContactProfile';
+export { default as Notification } from './Notification';
+export { default as ContactsEmpty } from './ContactsEmpty';

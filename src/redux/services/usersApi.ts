@@ -64,9 +64,12 @@ export const usersApi = baseApi.injectEndpoints({
             };
           }
           
+          
           // Trả về dữ liệu thành công
           return { data: result.data  as User[] };
         } catch (error) {
+   
+          
           return { 
             error: {
               status: 'CUSTOM_ERROR',

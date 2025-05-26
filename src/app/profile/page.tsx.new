@@ -1,0 +1,357 @@
+'use client';
+import Image from 'next/image';
+import { useState, useRef, ChangeEvent, FormEvent, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useGetProfileQuery, useUpdateProfileMutation } from '@/redux/services/profileApi';
+
+export default function ProfilePage() {
+   const router = useRouter();
+   
+   // RTK Query hooks
+   const { data: profileData, isLoading: isLoadingProfile, error: profileError } = useGetProfileQuery();
+   const [updateProfile, { isLoading: isUpdating }] = useUpdateProfileMutation();
+
+   // Local state for form fields
+   const [formState, setFormState] = useState({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phoneNumber: '',
+      country: 'Vietnam',
+      bio: '',
+      avatar: '/images/avatar/1.jpg'
+   });
+   
+   // Local state for image uploads
+   const [coverImage, setCoverImage] = useState('/images/cover/2.jpg');
+   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+
+   const coverInputRef = useRef<HTMLInputElement>(null);
+   const profileInputRef = useRef<HTMLInputElement>(null);
+
+   // Update local form state when profile data is loaded
+   useEffect(() => {
+      if (profileData) {
+         setFormState({
+            firstName: profileData.firstName || '',
+            lastName: profileData.lastName || '',
+            email: profileData.email || '',
+            phoneNumber: profileData.phoneNumber || '',
+            country: profileData.country || 'Vietnam',
+            bio: profileData.bio || '',
+            avatar: profileData.avatar || '/images/avatar/1.jpg'
+         });
+      }
+   }, [profileData]);
+
+   // Handle input changes
+   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+      const { name, value } = e.target;
+      setFormState(prev => ({
+         ...prev,
+         [name]: value
+      }));
+   };
+
+   // Handle profile image change
+   const handleProfileImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+         const imageUrl = URL.createObjectURL(file);
+         // Update avatar in local state
+         setFormState(prev => ({
+            ...prev,
+            avatar: imageUrl
+         }));
+         // Store file for upload
+         setProfileImageFile(file);
+      }
+   };
+
+   // Handle cover image change
+   const handleCoverImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+         const imageUrl = URL.createObjectURL(file);
+         setCoverImage(imageUrl);
+         setCoverImageFile(file);
+      }
+   };
+
+   // Trigger file input click
+   const triggerCoverImageUpload = () => {
+      coverInputRef.current?.click();
+   };
+
+   const triggerProfileImageUpload = () => {
+      profileInputRef.current?.click();
+   };
+
+   // Handle form submission
+   const handleSubmit = async (e: FormEvent) => {
+      e.preventDefault();
+
+      try {
+         // Create form data to send to server
+         const formData = new FormData();
+
+         // Add all profile fields
+         formData.append('firstName', formState.firstName);
+         formData.append('lastName', formState.lastName);
+         formData.append('phoneNumber', formState.phoneNumber);
+         formData.append('country', formState.country);
+         formData.append('bio', formState.bio);
+
+         // Add avatar file if available
+         if (profileImageFile) {
+            formData.append('avatar', profileImageFile);
+         }
+
+         // Send update profile request
+         const result = await updateProfile(formData).unwrap();
+         alert('Profile updated successfully!');
+      } catch (error) {
+         console.error('Error updating profile:', error);
+         alert('Failed to update profile. Please try again.');
+      }
+   };
+
+   // Show loading state
+   if (isLoadingProfile && !profileData) {
+      return (
+         <div className="tyn-root">
+            <div className="tyn-content">
+               <div className="container">
+                  <div className="text-center py-5">
+                     <div className="spinner-border text-primary" role="status">
+                        <span className="visually-hidden">Loading...</span>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </div>
+      );
+   }
+
+   return (
+      <div className="tyn-root">
+         <div className="tyn-content tyn-auth tyn-auth-centered">
+            <div className="container">
+               <div className="tyn-profile">
+                  <div className="tyn-profile-head">
+                     <div className="tyn-profile-cover position-relative">
+                        <Image
+                           className="tyn-profile-cover-image"
+                           src={coverImage}
+                           width={800}
+                           height={300}
+                           alt="profile cover"
+                           priority
+                        />
+                        <a
+                           href="#cover-upload"
+                           onClick={(e) => {
+                              e.preventDefault();
+                              triggerCoverImageUpload();
+                           }}
+                           className="tyn-cover-upload position-absolute"
+                        >
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12.6 2h-1.2c-.2 0-.5.2-.5.4v9.2c0 .2.2.4.5.4h1.2c.2 0 .5-.2.5-.4V2.4c0-.2-.2-.4-.5-.4z"></path>
+                              <path d="M8.7 6.7a.5.5 0 0 0 .8 0l3-4.1c.2-.2.1-.6-.2-.6h-6.6c-.3 0-.4.4-.2.6l3.2 4.1z"></path>
+                              <path d="M21.4 13.5L17 10.7a1 1 0 0 0-1.3.2L12 16l-3.6-5.1a1 1 0 0 0-1.4-.2L2.6 13.6a1 1 0 0 0-.3 1.1l2.2 7.5a1 1 0 0 0 1 .8H19a1 1 0 0 0 .9-.8l2-7.5a1 1 0 0 0-.5-1.2zm-8.9 5.3a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"></path>
+                           </svg>
+                           <span className="tyn-cover-upload-label">Upload Cover</span>
+                           <input
+                              ref={coverInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleCoverImageChange}
+                              className="visually-hidden"
+                           />
+                        </a>
+                     </div>
+
+                     <div className="tyn-profile-avatar flex-shrink-0 position-relative">
+                        <Image
+                           className="tyn-profile-avatar-image"
+                           src={formState.avatar}
+                           width={100}
+                           height={100}
+                           alt="profile avatar"
+                           priority
+                        />
+                        <a
+                           href="#avatar-upload"
+                           onClick={(e) => {
+                              e.preventDefault();
+                              triggerProfileImageUpload();
+                           }}
+                           className="tyn-profile-avatar-upload position-absolute"
+                        >
+                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M12.6 2h-1.2c-.2 0-.5.2-.5.4v9.2c0 .2.2.4.5.4h1.2c.2 0 .5-.2.5-.4V2.4c0-.2-.2-.4-.5-.4z"></path>
+                              <path d="M8.7 6.7a.5.5 0 0 0 .8 0l3-4.1c.2-.2.1-.6-.2-.6h-6.6c-.3 0-.4.4-.2.6l3.2 4.1z"></path>
+                              <path d="M21.4 13.5L17 10.7a1 1 0 0 0-1.3.2L12 16l-3.6-5.1a1 1 0 0 0-1.4-.2L2.6 13.6a1 1 0 0 0-.3 1.1l2.2 7.5a1 1 0 0 0 1 .8H19a1 1 0 0 0 .9-.8l2-7.5a1 1 0 0 0-.5-1.2zm-8.9 5.3a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"></path>
+                           </svg>
+                           <input
+                              ref={profileInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleProfileImageChange}
+                              className="visually-hidden"
+                           />
+                        </a>
+                     </div>
+
+                     <div className="tyn-profile-info position-relative">
+                        <div className="row gy-3">
+                           <div className="col-lg-7">
+                              <h3 className="tyn-profile-info-title mb-1">{formState.firstName} {formState.lastName}</h3>
+                              <div className="tyn-profile-info-subtitle">Hồ sơ thông tin cá nhân</div>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+
+                  <div className="tyn-profile-setting card border-0">
+                     <div className="card-body p-lg-5">
+                        <div className="row g-4">
+                           <div className="col-xl-9">
+                              <div className="card border-0">
+                                 <div className="card-body">
+                                 <form onSubmit={handleSubmit}>
+                                     <div className="row g-3">
+                                         <div className="col-lg-6">
+                                             <div className="form-group">
+                                                 <label className="form-label" htmlFor="firstName">Họ</label>
+                                                 <div className="form-control-wrap">
+                                                     <input
+                                                         type="text"
+                                                         id="firstName"
+                                                         name="firstName"
+                                                         value={formState.firstName}
+                                                         onChange={handleInputChange}
+                                                         placeholder="Nhập họ của bạn"
+                                                         className="form-control-lg form-control"
+                                                     />
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         <div className="col-lg-6">
+                                             <div className="form-group">
+                                                 <label className="form-label" htmlFor="lastName">Tên</label>
+                                                 <div className="form-control-wrap">
+                                                     <input
+                                                         type="text"
+                                                         id="lastName"
+                                                         name="lastName"
+                                                         value={formState.lastName}
+                                                         onChange={handleInputChange}
+                                                         placeholder="Nhập tên của bạn"
+                                                         className="form-control-lg form-control"
+                                                     />
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         <div className="col-lg-6">
+                                             <div className="form-group">
+                                                 <label className="form-label" htmlFor="email">Email</label>
+                                                 <div className="form-control-wrap">
+                                                     <input
+                                                         type="email"
+                                                         id="email"
+                                                         name="email"
+                                                         value={formState.email}
+                                                         readOnly
+                                                         className="form-control-lg form-control"
+                                                     />
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         <div className="col-lg-6">
+                                             <div className="form-group">
+                                                 <label className="form-label" htmlFor="phoneNumber">Số điện thoại</label>
+                                                 <div className="form-control-wrap">
+                                                     <input
+                                                         type="text"
+                                                         id="phoneNumber"
+                                                         name="phoneNumber"
+                                                         value={formState.phoneNumber}
+                                                         onChange={handleInputChange}
+                                                         placeholder="Nhập số điện thoại của bạn"
+                                                         className="form-control-lg form-control"
+                                                     />
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         <div className="col-12">
+                                             <div className="form-group">
+                                                 <label className="form-label" htmlFor="country">Quốc gia</label>
+                                                 <div className="form-control-wrap">
+                                                     <select
+                                                         id="country"
+                                                         name="country"
+                                                         value={formState.country}
+                                                         onChange={handleInputChange}
+                                                         className="form-control-lg form-control js-select2"
+                                                     >
+                                                         <option value="Vietnam">Việt Nam</option>
+                                                         <option value="US">Hoa Kỳ</option>
+                                                         <option value="UK">Anh</option>
+                                                         <option value="Canada">Canada</option>
+                                                         <option value="Australia">Úc</option>
+                                                     </select>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         <div className="col-12">
+                                             <div className="form-group">
+                                                 <label className="form-label" htmlFor="bio">Bio</label>
+                                                 <div className="form-control-wrap">
+                                                     <textarea
+                                                         id="bio"
+                                                         name="bio"
+                                                         value={formState.bio}
+                                                         onChange={handleInputChange}
+                                                         placeholder="Viết một vài điều về bản thân bạn"
+                                                         className="form-control-lg form-control"
+                                                     ></textarea>
+                                                 </div>
+                                             </div>
+                                         </div>
+                                         
+                                         <div className="col-12">
+                                             <div className="form-group">
+                                                 <button type="submit" className="btn btn-lg btn-primary" disabled={isUpdating}>
+                                                     {isUpdating ? (
+                                                         <>
+                                                             <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                                             Đang cập nhật...
+                                                         </>
+                                                     ) : (
+                                                         "Cập nhật hồ sơ"
+                                                     )}
+                                                 </button>
+                                             </div>
+                                         </div>
+                                     </div>
+                                 </form>
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </div>
+   );
+}

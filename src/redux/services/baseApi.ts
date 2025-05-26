@@ -14,7 +14,7 @@ export const baseApi = createApi({
       return headers;
     }
   }),
-  tagTypes: ['Chats', 'Messages', 'Users', 'Auth', 'EmailVerification', 'Conversations'],
+  tagTypes: ['Chats', 'Messages', 'Users', 'Auth', 'EmailVerification', 'Conversations', 'Profile', 'Media'],
   endpoints: () => ({}),
 });
 

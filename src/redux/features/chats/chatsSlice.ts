@@ -3,12 +3,25 @@ import axios from 'axios';
 
 // Định nghĩa interface Chat
 export interface Message {
-  id: number;
+  id?: number | string;
+  messageId?: string;
   content: string;
-  senderId: number;
-  receiverId: number;
-  timestamp: string;
-  isRead: boolean;
+  senderId: number | string;
+  receiverId?: number;
+  conversationId?: string;
+  timestamp?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  type?: string;
+  isRead?: boolean;
+  status?: string;
+  senderName?: string;
+  isCurrentUserSender?: boolean;
+  sender?: {
+    id: string;
+    username?: string;
+    profile?: any;
+  };
 }
 
 export interface Chat {

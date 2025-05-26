@@ -229,5 +229,65 @@ export async function getLatestConversationIdAction() {
   }
 }
 
+// Hàm action để mời người dùng vào cuộc trò chuyện nhóm
+export async function inviteToConversationAction(conversationId: string | number, invitedUserId: string) {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+    const token = cookies().get("token")?.value;
+
+    const response = await axios.post(
+      `${apiUrl}/conversations/${conversationId}/invite`, 
+      {
+        invitedUserId
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        }
+      }
+    );
+
+    
+    // Kiểm tra kết quả từ response
+    if (response.status !== 200 && response.status !== 201) {
+      throw new Error("Không thể mời người dùng vào cuộc trò chuyện");
+    }
+
+ 
+    
+
+    return response.data;
+  } catch (error) {
+    console.error(`Error inviting user to conversation ${conversationId}:`, error);
+    return { error: "Không thể mời người dùng vào cuộc trò chuyện" };
+  }
+}
+
+// Hàm action để lấy thông tin chi tiết của cuộc trò chuyện bao gồm participants
+export async function fetchConversationParticipantsAction(conversationId: string | number) {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+    const token = cookies().get("token")?.value;
+
+    const response = await axios.get(`${apiUrl}/conversations/${conversationId}`, {
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    // Kiểm tra kết quả từ response
+    if (response.status !== 200) {
+      throw new Error("Không thể lấy thông tin của cuộc trò chuyện");
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching conversation ${conversationId} details:`, error);
+    return { error: "Không thể lấy thông tin chi tiết của cuộc trò chuyện" };
+  }
+}
+
 
 
