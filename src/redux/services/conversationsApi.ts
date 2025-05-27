@@ -313,6 +313,26 @@ export const conversationsApi = baseApi.injectEndpoints({
         'Conversations'
       ]
     }),
+
+    // Xóa thành viên khỏi cuộc trò chuyện nhóm
+    removeMemberFromConversation: builder.mutation<{ message: string }, { conversationId: string; userId: string }>({
+      queryFn: async ({ conversationId, userId }) => {
+        try {
+          const { removeMemberFromConversationAction } = await import('@/app/actions/converstations');
+          const result = await removeMemberFromConversationAction(conversationId, userId);
+          
+          return { data: result };
+        } catch (error) {
+          return { 
+            error: { 
+              status: 'FETCH_ERROR', 
+              error: String(error) 
+            } 
+          };
+        }
+      },
+      invalidatesTags: ['Conversations']
+    }),
   }),
 });
 
@@ -325,5 +345,6 @@ export const {
   useCreateOneToOneConversationMutation,
   useCreateGroupConversationMutation,
   useSendMessageMutation,
-  useInviteToConversationMutation
+  useInviteToConversationMutation,
+  useRemoveMemberFromConversationMutation
 } = conversationsApi;

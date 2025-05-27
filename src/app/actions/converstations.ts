@@ -295,5 +295,33 @@ export async function fetchConversationParticipantsAction(conversationId: string
   }
 }
 
+// Hàm action để xóa thành viên khỏi cuộc trò chuyện nhóm
+export async function removeMemberFromConversationAction(conversationId: string, userId: string) {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+    const token = cookies().get("token")?.value;
+
+    const response = await axios.delete(
+      `${apiUrl}/conversations/${conversationId}/members/${userId}`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        }
+      }
+    );
+
+    // Kiểm tra kết quả từ response
+    if (response.status !== 200) {
+      throw new Error("Không thể xóa thành viên khỏi cuộc trò chuyện");
+    }
+
+    return response.data;
+  } catch (error) {
+    console.error(`Error removing member from conversation ${conversationId}:`, error);
+    throw error;
+  }
+}
+
 
 

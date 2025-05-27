@@ -59,6 +59,8 @@ export async function getProfileAction() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
     const token = cookies().get('token')?.value;
     
+
+    
     if (!token) {
       return { success: false, error: 'Không có phiên đăng nhập' };
     }
@@ -77,6 +79,7 @@ export async function getProfileAction() {
       throw new Error('Không thể lấy thông tin người dùng');
     }
 
+    
     return {
       success: true,
       data: response.data

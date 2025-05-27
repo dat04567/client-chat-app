@@ -9,13 +9,15 @@ import {
   useGetConversationsQuery,
   useGetConversationParticipantsQuery,
   conversationsApi,
-  useInviteToConversationMutation
+  useInviteToConversationMutation,
+  useRemoveMemberFromConversationMutation
 } from '@/redux/services/conversationsApi';
 import { useGetFriendsQuery } from '@/redux/services/usersApi';
 import { useSocket } from '@/hooks/useSocket';
 import { useDispatch } from 'react-redux';
 import { AppDispatch } from '@/redux/store';
 import { toast } from 'react-hot-toast';
+import Swal from 'sweetalert2';
 
 // Định nghĩa các interface để làm rõ kiểu dữ liệu
 interface Message {
@@ -38,8 +40,9 @@ interface Message {
 }
 
 interface Participant {
-  id: string;
+  userId: string;
   isAdmin?: boolean;
+  isCreator?: boolean;
   isOnline?: boolean;
   profile?: {
     firstName?: string;
@@ -76,6 +79,9 @@ export default function ConversationPage() {
 
    // Add inviteToConversation mutation
    const [inviteToConversation, { isLoading: isInvitingApi }] = useInviteToConversationMutation();
+
+   // Add removeMember mutation
+   const [removeMember, { isLoading: isRemoving }] = useRemoveMemberFromConversationMutation();
 
    // Fetch conversation participants data
    const {
@@ -317,6 +323,44 @@ export default function ConversationPage() {
          });
    }, [conversationId, selectedUserIds, inviteToConversation]);
 
+   // Xử lý sự kiện khi admin xóa thành viên khỏi nhóm
+  const handleRemoveMember = useCallback((userId: string) => {
+  if (!conversationId) return;
+  
+  Swal.fire({
+    title: 'Xác nhận',
+    text: 'Bạn có chắc chắn muốn xóa thành viên này khỏi nhóm?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#3085d6',
+    cancelButtonColor: '#d33',
+    confirmButtonText: 'Xóa',
+    cancelButtonText: 'Hủy'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      removeMember({
+        conversationId: conversationId.toString(),
+        userId
+      })
+      .unwrap()
+      .then(() => {
+        Swal.fire(
+          'Đã xóa!',
+          'Thành viên đã được xóa khỏi nhóm.',
+          'success'
+        );
+      })
+      .catch((error) => {
+        Swal.fire(
+          'Lỗi!',
+          'Không thể xóa thành viên này.',
+          'error'
+        );
+      });
+    }
+  });
+}, [conversationId, removeMember]);
+
    // Get contacts for inviting to group chat
    const {
       data: contacts,
@@ -327,7 +371,13 @@ export default function ConversationPage() {
    });
 
 
-   console.log(participantsData);
+
+
+   
+
+
+   
+
    
 
    if (isLoadingMessages || isLoadingConversations) {
@@ -374,10 +424,8 @@ export default function ConversationPage() {
 
    const displayName = partnerProfile 
       ? `${partnerProfile.lastName || ''} ${partnerProfile.firstName || ''}`.trim()
-      : otherUser?.username || 'Unknown User';
-
-   const participants = otherUser
-      ? [{ id: otherUser.id || '1', name: otherUser.username || displayName }]
+      : otherUser?.username || 'Unknown User';   const participants = otherUser
+      ? [{ id: otherUser.userId || otherUser.id || '1', name: otherUser.username || displayName }]
       : [];
 
    const isOnline = otherUser?.isOnline || false;
@@ -479,7 +527,7 @@ export default function ConversationPage() {
                                 <button className="nav-link" data-bs-toggle="tab" data-bs-target="#chat-media" type="button" aria-selected="false" tabIndex={-1} role="tab">
                                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-images" viewBox="0 0 16 16">
                                     <path d="M4.502 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"></path>
-                                    <path d="M14.002 13a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2V5A2 2 0 0 1 2 3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-1.998 2M14 2H4a1 1 0 0 0-1 1h9.002a2 2 0 0 1 2 2v7A1 1 0 0 0 15 11V3a1 1 0 0 0-1-1M2.002 4a1 1 0 0 0-1 1v8l2.646-2.354a.5.5 0 0 1 .63-.062l2.66 1.773 3.71-3.71a.5.5 0 0 1 .577-.094l1.777 1.947V5a1 1 0 0 0-1-1z"></path>
+                                    <path d="M14.002 13a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2V5A2 2 0 0 1 2 3a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-1.998 2M14 2H4a1 1 0 0 0-1 1h9.002a2 2 0 0 1 2 2v7A1 1 0 0 0 15 11V3a1 1 0 0 0-1-1H2.5A1.5 1.5 0 0 0 1 2.5z"></path>
                                   </svg>
                                   <span>Media</span>
                                 </button>
@@ -872,9 +920,8 @@ export default function ConversationPage() {
                                         <div className="text-center my-3 text-danger">
                                           <p>Lỗi khi tải danh sách thành viên. Vui lòng thử lại.</p>
                                         </div>
-                                      ) : participantsData && participantsData.participants && participantsData.participants.length > 0 ? (
-                                        participantsData.participants.map((participant: Participant) => (
-                                          <li key={participant.id}>
+                                      ) : participantsData && participantsData.participants && participantsData.participants.length > 0 ? (                                        participantsData.participants.map((participant: Participant) => (
+                                          <li key={participant.userId}>
                                             <div className="tyn-media-group">
                                                 <div className="tyn-media tyn-size-lg">
                                                   <Image 
@@ -888,21 +935,35 @@ export default function ConversationPage() {
                                                   />
 
                                                 </div>
-                                              <div className="tyn-media-col">
+                                              <div className="tyn-media-col">    
                                                 <div className="tyn-media-row">
+                                                  
                                                   <h6 className="name">{`${participant.profile?.lastName || ''} ${participant.profile?.firstName || ''}`}</h6>
-                                                  {participant.id === participantsData.currentUserId && <span className="badge bg-primary ms-1">Bạn</span>}
-                                                  {participant.isAdmin && <span className="badge bg-success ms-1">Admin</span>}
+                                                 {(participant.userId === participantsData.currentUserId || participant.isAdmin || participant.isCreator) && (
+      <span className="badge-indicator ms-2" data-bs-toggle="tooltip" title={
+        `${participant.userId === participantsData.currentUserId ? 'Bạn ' : ''}
+         ${participant.isAdmin ? '- Admin ' : ''}
+         ${participant.isCreator ? '- Người tạo nhóm' : ''}`
+      }>
+        <i className="bi bi-info-circle-fill text-primary"></i>
+      </span>
+    )}
                                                 </div>
                                                 <div className="tyn-media-row has-dot-sap">
                                                   <span className="meta">{participant.isOnline ? 'Đang hoạt động' : 'Không hoạt động'}</span>
                                                 </div>
-                                              </div>
-                                              {participantsData.conversation?.createdBy === participantsData.currentUserId && participant.id !== participantsData.currentUserId && (
+                                              </div>                                              
+                                              {participantsData.participants?.some(p => p.isCreator && p.userId === participantsData.currentUserId) && 
+                                               participant.userId !== participantsData.currentUserId && (
                                                 <div className="tyn-media-option">
                                                   <ul className="tyn-media-option-list">
                                                     <li>
-                                                      <button className="btn btn-icon btn-md btn-pill btn-light">
+                                                      <button 
+                                                        className="btn btn-icon btn-md btn-pill btn-light"
+                                                        onClick={() => handleRemoveMember(participant.userId)}
+                                                        disabled={isRemoving}
+                                                        title="Xóa khỏi nhóm"
+                                                      >
                                                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-person-dash" viewBox="0 0 16 16">
                                                           <path d="M12.5 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M11 12h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1 0-1m0-7a3 3 0 1 1-6 0 3 3 0 0 1 6 0M8 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4"/>
                                                           <path d="M8.256 14a4.474 4.474 0 0 1-.229-1.004H3c.001-.246.154-.986.832-1.664C4.484 10.68 5.711 10 8 10c.26 0 .507.009.74.025.226-.341.496-.65.804-.918C9.077 9.038 8.564 9 8 9c-5 0-6 3-6 4s1 1 1 1z"/>
